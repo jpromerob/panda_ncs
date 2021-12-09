@@ -52,6 +52,7 @@ typedef struct payload_t {
 #pragma pack()
 
 
+int op_mode;
 
 
 double scale = 0.9; // scaling constant 
@@ -151,7 +152,10 @@ void save_nextcoor(double x, double y, double z) {
     nextcoor.z = check_limit( y + 0.01 + offset_z, 'z');
     mutex_nextcoor.unlock();
   }
-  // printf("x: %3.3f | y: %3.3f | z: %3.3f\n", nextcoor.x, nextcoor.y, nextcoor.z);
+
+  if (op_mode == 0){
+    printf("x: %3.3f | y: %3.3f | z: %3.3f\n", nextcoor.x, nextcoor.y, nextcoor.z);
+  }
 
 }
 
@@ -421,7 +425,6 @@ int createSocket(int port)
         printf("ERROR: Socket creation failed\n");
         exit(1);
     }
-    printf("Socket created\n");
 
     bzero((char *) &server, sizeof(server));
     server.sin_family = AF_INET;
@@ -432,7 +435,7 @@ int createSocket(int port)
         printf("ERROR: Bind failed\n");
         exit(1);
     }
-    printf("Bind done\n");
+    printf("Listening to Slepiner\n");
 
     listen(sock , 3);
 
@@ -474,6 +477,7 @@ int get_snn_data()
             payload *p = (payload*) buff;
 
             save_nextcoor(p->x, p->y, p->z);
+              
         }
         close(csock);
     }
@@ -734,9 +738,9 @@ void move_end_effector(char* robot_ip) {
 
 int main(int argc, char** argv) {
 
-  int op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
+  op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
 
-  std::cout << "Hello NCS\n";
+  std::cout << "Hello NCS people :)\n";
   
 
   if (argc != 3) {
@@ -792,31 +796,6 @@ int main(int argc, char** argv) {
       }
 
   }
-
-
-
-  // if(op_mode == 0){
-  //   std::thread snn_process (get_snn_data);
-  //   snn_process.join(); 
-  //   printf("Stopped getting incoming data\n");
-  // }
-      
-  // if(op_mode == 1){
-  //   std::thread snn_process (get_snn_data);
-  //   std::thread mot_process (move_end_effector, argv[1]);  
-  //   snn_process.join(); 
-  //   printf("Stopped getting incoming data\n");
-  //   mot_process.join();
-  // }
-
-  // if(op_mode == 2){
-  //   std::thread opt_process (get_opt_data);
-  //   std::thread mot_process (move_end_effector, argv[1]);  
-  //   opt_process.join(); 
-  //   printf("Stopped getting incoming data\n");
-  //   mot_process.join();
-  // }
-
 
   return 0;
 }
