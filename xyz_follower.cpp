@@ -533,6 +533,21 @@ void read_csv()
 }
 
 
+double validate(double curr_coor, double next_coor){
+
+    double delta = 0.05; // 5[cm]
+    double valid_coor = next_coor;
+    if(next_coor > curr_coor + delta){
+      valid_coor = curr_coor + delta;
+    }
+    if(next_coor < curr_coor - delta){
+      valid_coor = curr_coor - delta;
+    }
+
+    return valid_coor;
+
+}
+
 /***********************************************************************************************/
 /*                                                                                             */
 /*                                                                                             */
@@ -657,10 +672,12 @@ void move_end_effector(char* robot_ip) {
 
                                           
       mutex_nextcoor.lock();
-      c_target.x = nextcoor.x;
-      c_target.y = nextcoor.y;
-      c_target.z = nextcoor.z;
-      mutex_nextcoor.unlock();                                     
+      c_target.x = validate(robot_state.O_T_EE[12], nextcoor.x);
+      c_target.y = validate(robot_state.O_T_EE[13], nextcoor.y);
+      c_target.z = validate(robot_state.O_T_EE[14], nextcoor.z); 
+      mutex_nextcoor.unlock();                                    
+
+      
 
       // actual end effector positioning command
       initial_state.O_T_EE[12] = c_target.x;
@@ -740,7 +757,7 @@ int main(int argc, char** argv) {
 
   op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
 
-  std::cout << "Hello NCS people :)\n";
+  std::cout << "JPRB: Hello NCS people :)\n";
   
 
   if (argc != 3) {

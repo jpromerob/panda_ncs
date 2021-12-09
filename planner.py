@@ -44,9 +44,9 @@ def main():
             delta_z = max_radius*math.sin(math.pi/180*idx)
 
 
-            panda_x = 0.0266687 + delta_x
-            panda_y = -0.500253 + delta_y
-            panda_z = 0.418845 + delta_z
+            panda_x = 0.400 + delta_x
+            panda_y = 0.000 + delta_y 
+            panda_z = 0.400 + delta_z
 
             x = panda_x - 0.35 + 0.10
             y = panda_z - 0.01 - 0.20

@@ -52,6 +52,7 @@ typedef struct payload_t {
 #pragma pack()
 
 
+int op_mode;
 
 
 double scale = 0.9; // scaling constant 
@@ -151,7 +152,10 @@ void save_nextcoor(double x, double y, double z) {
     nextcoor.z = check_limit( y + 0.01 + offset_z, 'z');
     mutex_nextcoor.unlock();
   }
-  // printf("x: %3.3f | y: %3.3f | z: %3.3f\n", nextcoor.x, nextcoor.y, nextcoor.z);
+
+  if (op_mode == 0){
+    printf("x: %3.3f | y: %3.3f | z: %3.3f\n", nextcoor.x, nextcoor.y, nextcoor.z);
+  }
 
 }
 
@@ -421,7 +425,6 @@ int createSocket(int port)
         printf("ERROR: Socket creation failed\n");
         exit(1);
     }
-    printf("Socket created\n");
 
     bzero((char *) &server, sizeof(server));
     server.sin_family = AF_INET;
@@ -432,7 +435,7 @@ int createSocket(int port)
         printf("ERROR: Bind failed\n");
         exit(1);
     }
-    printf("Bind done\n");
+    printf("Listening to Slepiner\n");
 
     listen(sock , 3);
 
@@ -474,6 +477,7 @@ int get_snn_data()
             payload *p = (payload*) buff;
 
             save_nextcoor(p->x, p->y, p->z);
+              
         }
         close(csock);
     }
@@ -656,7 +660,9 @@ void move_end_effector(char* robot_ip) {
       c_target.x = nextcoor.x;
       c_target.y = nextcoor.y;
       c_target.z = nextcoor.z;
-      mutex_nextcoor.unlock();                                     
+      mutex_nextcoor.unlock();                               
+
+      
 
       // actual end effector positioning command
       initial_state.O_T_EE[12] = c_target.x;
@@ -734,9 +740,9 @@ void move_end_effector(char* robot_ip) {
 
 int main(int argc, char** argv) {
 
-  int op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
+  op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
 
-  std::cout << "Hello NCS\n";
+  std::cout << "Hello NCS people :)\n";
   
 
   if (argc != 3) {
@@ -754,6 +760,7 @@ int main(int argc, char** argv) {
 
   switch(op_mode){
 
+    // This mode is only for reading incoming data (from slepiner or else ... through tcp)
     case 0:
       {
         std::thread snn_process (get_snn_data);
@@ -763,6 +770,7 @@ int main(int argc, char** argv) {
       }
       
 
+    // This mode is for reading incoming data (from slepiner or else ... through tcp) AND making the robot follow
     case 1:
       {
         std::thread snn_process (get_snn_data);
@@ -773,6 +781,7 @@ int main(int argc, char** argv) {
         break;
       }
 
+    // This mode is for reading incoming data (from OPTITRACK) AND making the robot follow
     case 2:
       {
         std::thread opt_process (get_opt_data);
