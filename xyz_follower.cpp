@@ -758,6 +758,7 @@ int main(int argc, char** argv) {
 
   switch(op_mode){
 
+    // This mode is only for reading incoming data (from slepiner or else ... through tcp)
     case 0:
       {
         std::thread snn_process (get_snn_data);
@@ -767,6 +768,7 @@ int main(int argc, char** argv) {
       }
       
 
+    // This mode is for reading incoming data (from slepiner or else ... through tcp) AND making the robot follow
     case 1:
       {
         std::thread snn_process (get_snn_data);
@@ -777,6 +779,7 @@ int main(int argc, char** argv) {
         break;
       }
 
+    // This mode is for reading incoming data (from OPTITRACK) AND making the robot follow
     case 2:
       {
         std::thread opt_process (get_opt_data);
