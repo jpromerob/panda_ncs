@@ -130,6 +130,31 @@ double check_limit(double value, char axis) {
     return final_value;
 }
 
+/***********************************************************************************************/
+/* This function returns a 'final_value' for 'value' limited by the accesible workspace        */
+/*                                                                                             */
+/*                                                                                             */
+/*                                                                                             */
+/*                                                                                             */
+/***********************************************************************************************/
+double validate(double next, double current) {
+
+  double final_value = next;
+  double delta = 0.010; // 10[mm]
+
+  // Change in positive direction
+  if (next > current + delta){
+    final_value = current + delta;
+  }  
+
+  // Change in negative direction
+  if (next < current - delta){
+    final_value = current - delta;
+  }  
+
+  // printf("old: %3.6f | new: %3.6f (with detla: %3.6f)\n", current, final_value, delta);
+  return final_value;
+}
 
 
 /***********************************************************************************************/
@@ -145,13 +170,18 @@ void save_nextcoor(double x, double y, double z) {
   double offset_y = 0.20;
   double offset_z = 0.20;
 
+  double new_x = validate(check_limit( x + 0.35 + offset_x, 'x'), p_current.x); 
+  double new_y = validate(check_limit(-z + 0.36 + offset_y, 'y'), p_current.y);
+  double new_z = validate(check_limit( y + 0.01 + offset_z, 'z'), p_current.z);
+
   if (mutex_nextcoor.try_lock()) {
-    nextcoor.x = check_limit( x + 0.35 + offset_x, 'x'); 
-    nextcoor.y = check_limit(-z + 0.36 + offset_y, 'y');
-    nextcoor.z = check_limit( y + 0.01 + offset_z, 'z');
+    nextcoor.x = new_x;
+    nextcoor.y = new_y;
+    nextcoor.z = new_z;
     mutex_nextcoor.unlock();
   }
-  // printf("x: %3.3f | y: %3.3f | z: %3.3f\n", nextcoor.x, nextcoor.y, nextcoor.z);
+  // printf("%3.3f | %3.3f | %3.3f\n", new_x, new_y, new_z);
+  // printf("\n\n\n");
 
 }
 
@@ -392,7 +422,6 @@ int get_opt_data()
 	if (g_outputFile)
 	{
 		fclose(g_outputFile);
-    printf("Closing file\n");
 		g_outputFile = NULL;
 	}
 
@@ -468,13 +497,18 @@ int get_snn_data()
             continue;
         }
 
+        // printf("Accepted connection from %s\n", inet_ntoa(client.sin_addr));
         bzero(buff, BUFFSIZE);
         while ((nread=read(csock, buff, BUFFSIZE)) > 0)
         {
             payload *p = (payload*) buff;
 
+            // printf("\nReceived %d bytes\n", nread);
+            printf(" x=%1.6f \t y=%1.6f \t z=%1.6f\n", p->x, p->y, p->z);
             save_nextcoor(p->x, p->y, p->z);
         }
+        // printf("Closing connection to client\n");
+        // printf("----------------------------\n");
         close(csock);
     }
 
@@ -581,13 +615,13 @@ void init_panda_pva(char* robot_ip) {
     final_pose = robot_state.O_T_EE_c;
     final_joints = robot_state.q_d;
 
+    p_current.x = final_pose[12];
+    p_current.y = final_pose[13];
+    p_current.z = final_pose[14];
 
-    if (mutex_nextcoor.try_lock()) {
-      nextcoor.x = final_pose[12]; 
-      nextcoor.y = final_pose[13];
-      nextcoor.z = final_pose[14];
-      mutex_nextcoor.unlock();
-    }
+    std::cout << "x: " << p_current.x << " | ";
+    std::cout << "y: " << p_current.y << " | ";
+    std::cout << "z: " << p_current.z << " | ";
 
     return false;
   });
@@ -722,6 +756,28 @@ void move_end_effector(char* robot_ip) {
 
 }
 
+void read_pose(char* robot_ip) {
+    franka::Robot robot(robot_ip);
+    while (1) {
+      robot.read([](const franka::RobotState& robot_state) {
+
+        std::array<double, 16> final_pose;
+        std::array<double, 7> final_joints;
+        final_pose = robot_state.O_T_EE_c;
+        final_joints = robot_state.q_d;
+         
+        mutex_p_current.lock(); 
+        p_current.x = final_pose[12];
+        p_current.y = final_pose[13];
+        p_current.z = final_pose[14];
+        mutex_p_current.unlock(); 
+
+        return false;
+      });
+      usleep(20*1000);
+    }
+}
+
 
 /***********************************************************************************************/
 /*                                                                                             */
@@ -734,88 +790,32 @@ void move_end_effector(char* robot_ip) {
 
 int main(int argc, char** argv) {
 
-  int op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
 
   std::cout << "Hello NCS\n";
   
 
-  if (argc != 3) {
-    std::cerr << "Usage: " << argv[0] << " <robot-ip> <operating-mode>" << std::endl;
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <robot-hostname>" << std::endl;
     return -1;
   }
+  // init_panda_pva(argv[1]);
   init_maxmin_values();
-  op_mode = stoi(argv[2]);
-  printf("Mode: %d\n", op_mode);
-
-  // When the program starts the robot 'moves' to its current position
-  // This is to prevent sudden motion
-  init_panda_pva(argv[1]);
-   
-
-  switch(op_mode){
-
-    case 0:
-      {
-        std::thread snn_process (get_snn_data);
-        snn_process.join(); 
-        printf("Stopped getting incoming data\n");
-        break;
-      }
-      
-
-    case 1:
-      {
-        std::thread snn_process (get_snn_data);
-        std::thread mot_process (move_end_effector, argv[1]);  
-        snn_process.join(); 
-        printf("Stopped getting incoming data\n");
-        mot_process.join();
-        break;
-      }
-
-    case 2:
-      {
-        std::thread opt_process (get_opt_data);
-        std::thread mot_process (move_end_effector, argv[1]);  
-        opt_process.join(); 
-        printf("Stopped getting incoming data\n");
-        mot_process.join();
-        break;
-      }
-
-    default:
-      {
-        std::thread mot_process (move_end_effector, argv[1]);  
-        mot_process.join();
-        printf("Operating mode unavailable\n");
-        break;
-      }
-
-  }
 
 
+  std::thread opt_process (get_opt_data);    
+  // std::thread snn_process (get_snn_data);        
+  // std::thread sen_process (read_pose, argv[1]);  
+  std::thread mot_process (move_end_effector, argv[1]);  
 
-  // if(op_mode == 0){
-  //   std::thread snn_process (get_snn_data);
-  //   snn_process.join(); 
-  //   printf("Stopped getting incoming data\n");
-  // }
-      
-  // if(op_mode == 1){
-  //   std::thread snn_process (get_snn_data);
-  //   std::thread mot_process (move_end_effector, argv[1]);  
-  //   snn_process.join(); 
-  //   printf("Stopped getting incoming data\n");
-  //   mot_process.join();
-  // }
 
-  // if(op_mode == 2){
-  //   std::thread opt_process (get_opt_data);
-  //   std::thread mot_process (move_end_effector, argv[1]);  
-  //   opt_process.join(); 
-  //   printf("Stopped getting incoming data\n");
-  //   mot_process.join();
-  // }
+  std::cout << "Threads running...\n";
+
+  // synchronize threads:
+  opt_process.join();                // pauses until first finishes
+  // snn_process.join();                // pauses until first finishes
+  // sen_process.join();               // pauses until second finishes
+  mot_process.join();               // pauses until second finishes
+  
 
 
   return 0;
