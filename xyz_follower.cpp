@@ -451,7 +451,7 @@ int createSocket(int port)
 /***********************************************************************************************/
 int get_snn_data()
 {
-    int PORT = 3000;
+    int PORT = 2600;
     int BUFFSIZE = 512;
     char buff[BUFFSIZE];
     int ssock, csock;

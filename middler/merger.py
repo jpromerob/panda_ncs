@@ -25,6 +25,13 @@ from utils import data2text, generate_pdfs
 
 global cam_poses, c2w, focl
 
+
+""" This class defines a C-like struct """
+class Payload(Structure):
+    _fields_ = [("x", c_float),
+                ("y", c_float),
+                ("z", c_float)]
+                
 def set_focal_lengths():
 
     focl = np.zeros((2,3))
@@ -148,12 +155,6 @@ def get_transmats(cam_poses):
     
     return c2w
 
-
-""" This class defines a C-like struct """
-class Payload(Structure):
-    _fields_ = [("x", c_float),
-                ("y", c_float),
-                ("z", c_float)]
 
 
 def udpserver(queue, cam_id):
@@ -303,7 +304,7 @@ def get_angles_from_opt(x, y, z):
     return angles
 
 
-def use_pixels(queue,):
+def old_use_pixels(queue,):
 
     global focl
 
@@ -320,11 +321,77 @@ def use_pixels(queue,):
         py = datum[2]*240
 
         angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)
+        # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
 
-        # TODO: do some stuff
+        # poses of the virtual cameras based on angles calculated from pixel positions
+        vir_poses = set_vir_poses(angles)
 
+        # transformation matrices
+        v2c = get_transmats(vir_poses)
+               
+        xyz_9[0,cam_id-1] = 0 # x (in camera space)
+        xyz_9[1,cam_id-1] = 0 # y (in camera space)
+        xyz_9[2,cam_id-1] = -0.7 # z (in camera space)
+
+        
+        xyz_3 = merge_stuff(xyz_9, v2c)
+
+    return 0
+
+
+def use_dvs(queue,):
+
+    global focl
+
+    angles = np.zeros((2,3))
+    xyz_9 = np.zeros((3,3))
+
+
+    server_addr = ('172.16.222.31', 2600)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        s.connect(server_addr)
+        print("Connected to {:s}".format(repr(server_addr)))
+
+        counter = 0
+        while(True):
+            counter += 1
+            datum = queue.get()
+            cam_id = datum[0]
+
+            px = datum[1]*320
+            py = datum[2]*240
+
+            angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)
+            # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
+
+            # poses of the virtual cameras based on angles calculated from pixel positions
+            vir_poses = set_vir_poses(angles)
+
+            # transformation matrices
+            v2c = get_transmats(vir_poses)
+                
+            xyz_9[0,cam_id-1] = 0 # x (in camera space)
+            xyz_9[1,cam_id-1] = 0 # y (in camera space)
+            xyz_9[2,cam_id-1] = -1.0 # z (in camera space)
+
+            
+            xyz_3 = merge_stuff(xyz_9, v2c)
+
+            payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
+            nsent = s.send(payload_out)
+
+    except AttributeError as ae:
+        print("Error creating the socket: {}".format(ae))
+    except socket.error as se:
+        print("Exception on socket: {}".format(se))
+    finally:
+        print("Closing socket")
+        s.close()
     
     return 0
+
 
 '''
 This function defines object pose from camera perspective
@@ -344,55 +411,49 @@ def use_xyz(queue):
     angles = np.zeros((2,3))
     xyz_9 = np.zeros((3,3))
     
-    counter = 0
-    while(True):
-        counter += 1
-        datum = queue.get()
-        cam_id = datum[0]
+    server_addr = ('172.16.222.31', 2600)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        x = np.array(datum[1])
-        y = np.array(datum[2])
-        z = np.array(datum[3])
+    try:
+        s.connect(server_addr)
+        print("Connected to {:s}".format(repr(server_addr)))
 
-        angles[0:2, cam_id-1] = get_angles_from_opt(x, y, z)
-        # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
+        counter = 0
+        while(True):
+            counter += 1
+            datum = queue.get()
+            cam_id = datum[0]
 
-        # Go from angles to (x, y, z) again
-        new_z = z
-        new_x = new_z*math.tan(-angles[0, cam_id-1]*math.pi/180)
-        new_y = new_z*math.tan(-angles[1, cam_id-1]*math.pi/180)
+            x = np.array(datum[1])
+            y = np.array(datum[2])
+            z = np.array(datum[3])
 
-        # poses of the virtual cameras based on angles calculated from pixel positions
-        vir_poses = set_vir_poses(angles)
+            angles[0:2, cam_id-1] = get_angles_from_opt(x, y, z)
 
-        # transformation matrices
-        v2c = get_transmats(vir_poses)
+            # poses of the virtual cameras based on angles calculated from pixel positions
+            vir_poses = set_vir_poses(angles)
 
-        # The virtual camera 'thinks' that the object is located in the center of the image at a distance Z=0.7
-        vp = define_object_pose(v2c[:,:,cam_id-1], np.array([new_x, new_y, new_z, 1]))
-               
-        xyz_9[0,cam_id-1] = 0 # x (in camera space)
-        xyz_9[1,cam_id-1] = 0 # y (in camera space)
-        xyz_9[2,cam_id-1] = vp[2]+np.random.uniform(-0.3, 0.3, 1) # z (in camera space)
+            # transformation matrices
+            v2c = get_transmats(vir_poses)
+                
+            xyz_9[0,cam_id-1] = 0 # x (in camera space)
+            xyz_9[1,cam_id-1] = 0 # y (in camera space)
+            xyz_9[2,cam_id-1] = -1.0 # z (in camera space)
 
-        
-        xyz_3 = merge_stuff(xyz_9, v2c)
+            
+            xyz_3 = merge_stuff(xyz_9, v2c)
 
+            payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
+            nsent = s.send(payload_out)
 
-        if counter == 1000:
-            counter = 0
-            print(" Cam #1 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0]))
-            print(" Cam #2 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,1], xyz_9[1,1], xyz_9[2,1]))
-            print(" Cam #3 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
+    except AttributeError as ae:
+        print("Error creating the socket: {}".format(ae))
+    except socket.error as se:
+        print("Exception on socket: {}".format(se))
+    finally:
+        print("Closing socket")
+        s.close()
 
-        #     print("[{:.3f}, {:.3f}, {:.3f}] [{:.3f}, {:.3f}, {:.3f}] [{:.3f}, {:.3f}, {:.3f}]".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
-        #     # print(angles)
-        #     # print(vir_poses*180/math.pi)
-        #     # print("\n\n\n")
-        #     # print(v2c[:,:,0])
-        #     # print(v2c[:,:,1])
-        #     # print(v2c[:,:,2])
-        #     # time.sleep(15)
 
     
     return 0
@@ -434,7 +495,7 @@ if __name__ == "__main__":
     cam_2 = multiprocessing.Process(target=udpserver, args=(queue,2,))
     cam_3 = multiprocessing.Process(target=udpserver, args=(queue,3,))
 
-    show = multiprocessing.Process(target=use_xyz, args=(queue,))
+    show = multiprocessing.Process(target=use_dvs, args=(queue,))
 
     show.start()
     cam_1.start()
