@@ -167,24 +167,18 @@ def udpserver(queue, cam_id):
     try:
         # bind the server socket and listen
         ssock.bind(server_addr)
-        print("Bind done")
         ssock.listen(3)
-        print("Server listening on port {:d}".format(port_nb))
+        print("Listening on port {:d}".format(port_nb))
 
         while True:
             csock, client_address = ssock.accept()
-            # print("Accepted connection from {:s}".format(client_address[0]))
 
             buff = csock.recv(512)
             while buff:
                 payload_in = Payload.from_buffer_copy(buff)             
                 queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z])
-                # queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.a, payload_in.b])
                 
                 buff = csock.recv(512)
-
-            # print("Closing connection to client")
-            # print("----------------------------")
             csock.close()
 
     except AttributeError as ae:
@@ -211,8 +205,8 @@ def merge_stuff(xyz_9):
 
     xyz_3 = [mu_w[0,3], mu_w[1,3], mu_w[2,3]]
 
-    print("({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
-    print(" ---> ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
+    print("xyz_9: ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
+    print(" ---> xyz_3: ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
 
     return xyz_3
 
@@ -271,28 +265,8 @@ def use_pixels(queue,):
         py = datum[2]*240
 
         angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)
-
-        # poses of the virtual cameras based on angles calculated from pixel positions
-        vir_poses = set_vir_poses(angles)
-
-        # transformation matrices
-        v2c = get_transmats(vir_poses)
-
-        # The virtual camera 'thinks' that the object is located in the center of the image at a distance Z=0.7
-        vp = np.array([0, 0, 0.7, 1])
-
-        # transformation from virtual camera space into real camera space
-        cp = v2c[:,:,cam_id-1].dot(vp)
-
-        # transformation from real camera space to world space
-        gt = c2w[:,:,cam_id-1].dot(cp)
-
         
-        xyz_9[0,cam_id-1] = gt[0] # x (in camera space)
-        xyz_9[1,cam_id-1] = gt[1] # y (in camera space)
-        xyz_9[2,cam_id-1] = gt[2] # z (in camera space)
-        
-        xyz_3 = merge_stuff(xyz_9)
+        # TODO : import stuff from use_xyz whenever it's working
 
     
     return 0
@@ -346,6 +320,7 @@ def use_xyz(queue):
         
         xyz_3 = merge_stuff(xyz_9)
 
+    
     return 0
 
 def use_xyz_direclty(queue):
