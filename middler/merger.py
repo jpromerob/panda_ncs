@@ -16,6 +16,7 @@ import multiprocessing
 import os
 import math
 import time
+import random
 
 from coremerge import get_transmats
 from visuals import plot_gaussians, visualize_3d
@@ -248,7 +249,7 @@ def get_gaussian(perspective, cam_pdf_params, a2b, b2c):
 def merge_stuff(xyz_9, v2c):
 
     global cam_poses, c2w 
-    e_per = np.array([0.02, 0.02, 0.02]) 
+    e_per = np.array([0.02, 0.02, 0.3]) 
     cam_pdf_params = produce_snn_stats(e_per)
 
     start = time.time()
@@ -319,8 +320,8 @@ def use_pixels(queue,):
         py = datum[2]*240
 
         angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)
-        
-        # TODO : import stuff from use_xyz whenever it's working
+
+        # TODO: do some stuff
 
     
     return 0
@@ -362,7 +363,6 @@ def use_xyz(queue):
         new_y = new_z*math.tan(-angles[1, cam_id-1]*math.pi/180)
 
         # poses of the virtual cameras based on angles calculated from pixel positions
-        # vir_poses = set_vir_poses(np.zeros((2,3))) 
         vir_poses = set_vir_poses(angles)
 
         # transformation matrices
@@ -371,18 +371,19 @@ def use_xyz(queue):
         # The virtual camera 'thinks' that the object is located in the center of the image at a distance Z=0.7
         vp = define_object_pose(v2c[:,:,cam_id-1], np.array([new_x, new_y, new_z, 1]))
                
-        xyz_9[0,cam_id-1] = vp[0] # x (in camera space)
-        xyz_9[1,cam_id-1] = vp[1] # y (in camera space)
-        xyz_9[2,cam_id-1] = vp[2] # z (in camera space)
+        xyz_9[0,cam_id-1] = 0 # x (in camera space)
+        xyz_9[1,cam_id-1] = 0 # y (in camera space)
+        xyz_9[2,cam_id-1] = vp[2]+np.random.uniform(-0.3, 0.3, 1) # z (in camera space)
 
         
         xyz_3 = merge_stuff(xyz_9, v2c)
 
 
-        # if counter == 10:
-        #     # print(" Cam #1 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0]))
-        #     # print(" Cam #2 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,1], xyz_9[1,1], xyz_9[2,1]))
-        #     # print(" Cam #3 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
+        if counter == 1000:
+            counter = 0
+            print(" Cam #1 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0]))
+            print(" Cam #2 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,1], xyz_9[1,1], xyz_9[2,1]))
+            print(" Cam #3 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
 
         #     print("[{:.3f}, {:.3f}, {:.3f}] [{:.3f}, {:.3f}, {:.3f}] [{:.3f}, {:.3f}, {:.3f}]".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
         #     # print(angles)
