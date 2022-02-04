@@ -18,8 +18,8 @@ import math
 import time
 
 from coremerge import get_transmats, get_world_gaussian
-from snn import define_object_pose, produce_snn_stats
 from visuals import plot_gaussians, visualize_3d
+from snn import produce_snn_stats
 from utils import data2text, generate_pdfs
 
 global cam_poses, c2w, focl
@@ -271,6 +271,18 @@ def use_pixels(queue,):
     
     return 0
 
+'''
+This function defines object pose from camera perspective
+'''
+def define_object_pose(a2b, ground_truth):
+    
+
+    perspective = np.zeros((4,1)) # coordinates|cameras
+    # Checking output of each camera
+    b2a = np.linalg.inv(a2b)
+    perspective = b2a.dot(ground_truth)
+
+    return perspective
 
 def use_xyz(queue):
 
@@ -296,14 +308,15 @@ def use_xyz(queue):
         new_y = new_z*math.tan(-angles[1, cam_id-1]*1*math.pi/180)
 
         # poses of the virtual cameras based on angles calculated from pixel positions
-        vir_poses = set_vir_poses(np.zeros((2,3))) 
-        # vir_poses = set_vir_poses(angles)
+        # vir_poses = set_vir_poses(np.zeros((2,3))) 
+        vir_poses = set_vir_poses(angles)
 
         # transformation matrices
         v2c = get_transmats(vir_poses)
 
         # The virtual camera 'thinks' that the object is located in the center of the image at a distance Z=0.7
-        vp = np.array([new_x, new_y, new_z, 1]) 
+        vp = define_object_pose(v2c[:,:,cam_id-1], np.array([new_x, new_y, new_z, 1]))
+        # vp = np.array([new_x, new_y, new_z, 1]) 
         # vp = np.array([0, 0, 0.7, 1])
 
         # transformation from virtual camera space into real camera space
@@ -319,6 +332,22 @@ def use_xyz(queue):
 
         
         xyz_3 = merge_stuff(xyz_9)
+
+
+        if counter == 10:
+
+            print(" Old (x,y): [{:.3f}, {:.3f}] New (x,y): [{:.3f}, {:.3f}]".format(x, y, new_x, new_y))
+            print(" VP: Cam {:.3f} | [{:.3f}, {:.3f}, {:.3f}] ".format(cam_id, vp[0], vp[1], vp[2]))
+            print(" Cam #1 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0]))
+            print(" Cam #2 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,1], xyz_9[1,1], xyz_9[2,1]))
+            print(" Cam #3 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
+            print(angles)
+            print(vir_poses*180/math.pi)
+            print("\n\n\n")
+            print(v2c[:,:,0])
+            print(v2c[:,:,1])
+            print(v2c[:,:,2])
+            time.sleep(15)
 
     
     return 0
