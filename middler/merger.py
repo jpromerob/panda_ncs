@@ -17,7 +17,7 @@ import os
 import math
 import time
 
-from coremerge import get_transmats, get_world_gaussian
+from coremerge import get_transmats
 from visuals import plot_gaussians, visualize_3d
 from snn import produce_snn_stats
 from utils import data2text, generate_pdfs
@@ -191,21 +191,75 @@ def udpserver(queue, cam_id):
         print("Closing socket")
         ssock.close()
 
-def merge_stuff(xyz_9):
+
+
+
+def conflate(mu, sigma):
+    
+    mu_1 = mu[0]
+    mu_2 = mu[1]
+    mu_3 = mu[2]
+    
+    ss_1 = sigma[0]**2
+    ss_2 = sigma[1]**2
+    ss_3 = sigma[2]**2
+    
+    
+    mu_conflation = (ss_1*ss_2*mu_3 + ss_2*ss_3*mu_1 + ss_3*ss_1*mu_2)/(ss_3*ss_2 + ss_2*ss_1 + ss_1*ss_3)
+    sigma_conflation = math.sqrt((ss_1 * ss_2 * ss_3)/(ss_1*ss_2 + ss_2*ss_3 + ss_3*ss_1))
+    
+    
+    return mu_conflation, sigma_conflation
+
+def get_gaussian(perspective, cam_pdf_params, a2b, b2c):
+    
+    mu_a = np.zeros((3,4))
+    sigma_a = np.zeros((3,4))
+    mu_b = np.zeros((3,4))
+    sigma_b = np.zeros((3,4))
+    mu_c = np.zeros((3,4))
+    sigma_c = np.zeros((3,4))
+        
+    # The gaussians in space 'a' are centered around the values given in space 'a'
+    for j in range(3): # x, y, z
+        for i in range(3): # Cam 1, 2, 3
+            mu_a[j,i] = perspective[j,i] + cam_pdf_params[i,j,0]
+            sigma_a[j,i] = cam_pdf_params[i,j,1]    
+
+    # The gaussians are transformed to space 'b' (from space 'a') and their product is calculated (once per axis)
+    for j in range(3): # x, y, z
+        for i in range(3): # Cam 1, 2, 3
+            mu_b[j, i] = a2b[j,0,i]*mu_a[0,i] + a2b[j,1,i]*mu_a[1,i] + a2b[j,2,i]*mu_a[2,i] + a2b[j,3,i]
+            sigma_b[j, i] = math.sqrt((a2b[j,0,i]*sigma_a[0,i])**2 +(a2b[j,1,i]*sigma_a[1,i])**2 + (a2b[j,2,i]*sigma_a[2,i])**2)
+
+    # The gaussians are transformed to space 'c' (from space 'b') and their product is calculated (once per axis)
+    for j in range(3): # x, y, z
+        for i in range(3): # Cam 1, 2, 3
+            mu_c[j, i] = b2c[j,0,i]*mu_b[0,i] + b2c[j,1,i]*mu_b[1,i] + b2c[j,2,i]*mu_b[2,i] + b2c[j,3,i]
+            sigma_c[j, i] = math.sqrt((b2c[j,0,i]*sigma_b[0,i])**2 +(b2c[j,1,i]*sigma_b[1,i])**2 + (b2c[j,2,i]*sigma_b[2,i])**2)
+
+
+
+    for j in range(3): # x, y, z
+        mu_c[j, 3], sigma_c[j, 3] = conflate(mu_c[j, 0:3], sigma_c[j, 0:3])
+
+    return mu_c, sigma_c
+
+def merge_stuff(xyz_9, v2c):
 
     global cam_poses, c2w 
     e_per = np.array([0.02, 0.02, 0.02]) 
     cam_pdf_params = produce_snn_stats(e_per)
 
     start = time.time()
-    mu_c, sigma_c, mu_w, sigma_w = get_world_gaussian(xyz_9, cam_pdf_params, c2w)
+    mu_w, sigma_w = get_gaussian(xyz_9, cam_pdf_params, v2c, c2w)
     stop = time.time()
     elapsed = stop - start
 
 
     xyz_3 = [mu_w[0,3], mu_w[1,3], mu_w[2,3]]
 
-    print("xyz_9: ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
+    # print("xyz_9: ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
     print(" ---> xyz_3: ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
 
     return xyz_3
@@ -300,12 +354,12 @@ def use_xyz(queue):
         z = np.array(datum[3])
 
         angles[0:2, cam_id-1] = get_angles_from_opt(x, y, z)
-        print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
+        # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
 
         # Go from angles to (x, y, z) again
-        new_z = z*1
-        new_x = new_z*math.tan(-angles[0, cam_id-1]*1*math.pi/180)
-        new_y = new_z*math.tan(-angles[1, cam_id-1]*1*math.pi/180)
+        new_z = z
+        new_x = new_z*math.tan(-angles[0, cam_id-1]*math.pi/180)
+        new_y = new_z*math.tan(-angles[1, cam_id-1]*math.pi/180)
 
         # poses of the virtual cameras based on angles calculated from pixel positions
         # vir_poses = set_vir_poses(np.zeros((2,3))) 
@@ -316,38 +370,28 @@ def use_xyz(queue):
 
         # The virtual camera 'thinks' that the object is located in the center of the image at a distance Z=0.7
         vp = define_object_pose(v2c[:,:,cam_id-1], np.array([new_x, new_y, new_z, 1]))
-        # vp = np.array([new_x, new_y, new_z, 1]) 
-        # vp = np.array([0, 0, 0.7, 1])
-
-        # transformation from virtual camera space into real camera space
-        cp = v2c[:,:,cam_id-1].dot(vp)
-
-        # transformation from real camera space to world space
-        gt = cp #c2w[:,:,cam_id-1].dot([x, y, z, 1])
-
-       
-        xyz_9[0,cam_id-1] = gt[0] # x (in camera space)
-        xyz_9[1,cam_id-1] = gt[1] # y (in camera space)
-        xyz_9[2,cam_id-1] = gt[2] # z (in camera space)
+               
+        xyz_9[0,cam_id-1] = vp[0] # x (in camera space)
+        xyz_9[1,cam_id-1] = vp[1] # y (in camera space)
+        xyz_9[2,cam_id-1] = vp[2] # z (in camera space)
 
         
-        xyz_3 = merge_stuff(xyz_9)
+        xyz_3 = merge_stuff(xyz_9, v2c)
 
 
-        if counter == 10:
+        # if counter == 10:
+        #     # print(" Cam #1 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0]))
+        #     # print(" Cam #2 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,1], xyz_9[1,1], xyz_9[2,1]))
+        #     # print(" Cam #3 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
 
-            print(" Old (x,y): [{:.3f}, {:.3f}] New (x,y): [{:.3f}, {:.3f}]".format(x, y, new_x, new_y))
-            print(" VP: Cam {:.3f} | [{:.3f}, {:.3f}, {:.3f}] ".format(cam_id, vp[0], vp[1], vp[2]))
-            print(" Cam #1 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0]))
-            print(" Cam #2 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,1], xyz_9[1,1], xyz_9[2,1]))
-            print(" Cam #3 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
-            print(angles)
-            print(vir_poses*180/math.pi)
-            print("\n\n\n")
-            print(v2c[:,:,0])
-            print(v2c[:,:,1])
-            print(v2c[:,:,2])
-            time.sleep(15)
+        #     print("[{:.3f}, {:.3f}, {:.3f}] [{:.3f}, {:.3f}, {:.3f}] [{:.3f}, {:.3f}, {:.3f}]".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
+        #     # print(angles)
+        #     # print(vir_poses*180/math.pi)
+        #     # print("\n\n\n")
+        #     # print(v2c[:,:,0])
+        #     # print(v2c[:,:,1])
+        #     # print(v2c[:,:,2])
+        #     # time.sleep(15)
 
     
     return 0
