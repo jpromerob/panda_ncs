@@ -154,15 +154,6 @@ class Payload(Structure):
                 ("y", c_float),
                 ("z", c_float)]
 
-# """ This class defines a C-like struct """
-# class Payload(Structure):
-#     _fields_ = [("x", c_float),
-#                 ("y", c_float),
-#                 ("z", c_float),
-#                 ("a", c_float),
-#                 ("b", c_float)]
-
-
 
 def udpserver(queue, cam_id):
 
@@ -220,8 +211,8 @@ def merge_stuff(xyz_9):
 
     xyz_3 = [mu_w[0,3], mu_w[1,3], mu_w[2,3]]
 
-    # print("({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
-    # print(" ---> ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
+    print("({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
+    print(" ---> ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
 
     return xyz_3
 
@@ -235,6 +226,30 @@ def get_angles_from_dvs(px, py, focl, cam_id):
     
     angles[0] = (180/math.pi)*math.atan2(px, focl[0,cam_id-1]) 
     angles[1] = (180/math.pi)*math.atan2(py, focl[1,cam_id-1]) 
+
+    return angles
+
+'''
+This functions determines the angular 'distance' between camera and object in planez XZ and YZ
+'''
+def get_angles_from_opt(x, y, z):
+    angles = np.zeros(2)
+    angles[0] = (180/math.pi)*math.atan2(x,z) + 180 # delta_x/delta_z
+    angles[1] = (180/math.pi)*math.atan2(y,z) + 180 # delta_y/delta_z
+
+    if(angles[0]>180):
+        angles[0] = 360-angles[0]
+    if(angles[1]>180):
+        angles[1] = 360-angles[1]
+    if(angles[0]<-180):
+        angles[0] = 360+angles[0]
+    if(angles[1]<-180):
+        angles[1] = 360+angles[1]
+
+    if(x < 0):
+        angles[0] = -angles[0]
+    if(y < 0):
+        angles[1] = -angles[1]
 
     return angles
 
@@ -279,117 +294,9 @@ def use_pixels(queue,):
         
         xyz_3 = merge_stuff(xyz_9)
 
-        if counter > 1000:
-            counter = 0
-            # print(" Cam #{:.3f} | [{:.3f}, {:.3f}] ---> ({:.3f}, {:.3f}) ---> ({:.3f}, {:.3f}) ".format(cam_id, focl[0,cam_id-1], focl[1,cam_id-1], px, py, angles[0,cam_id-1], angles[1,cam_id-1]))
-            # print(" [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-            print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-            print("xyz_3 [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
     
     return 0
 
-
-def use_abz(queue):
-
-    angles = np.zeros((2,3))
-    xyz_9 = np.zeros((3,3))
-
-    counter = 0
-    while(True):
-        counter += 1
-        datum = queue.get()
-        cam_id = datum[0]
-
-        angles[0, cam_id-1] = np.array(datum[1]) # ang(XZ) (in camera space)
-        angles[1, cam_id-1] = np.array(datum[2]) # ang(YZ) (in camera space)
-
-        # poses of the virtual cameras based on angles calculated from pixel positions
-        vir_poses = set_vir_poses(angles)
-
-        # transformation matrices
-        v2c = get_transmats(vir_poses)
-
-        if counter == 100:
-            print(angles)
-            print(vir_poses*180/math.pi)
-            print("\n\n\n")
-            print(v2c[:,:,0])
-            print(v2c[:,:,1])
-            print(v2c[:,:,2])
-            time.sleep(15)
-
-        # The virtual camera 'thinks' that the object is located in the center of the image at a distance Z=0.7
-        vp = np.array([0, 0, 0.7, 1])
-
-        # transformation from virtual camera space into real camera space
-        cp = v2c[:,:,cam_id-1].dot(vp)
-
-        # transformation from real camera space to world space
-        gt = c2w[:,:,cam_id-1].dot(cp)
-
-        
-        xyz_9[0,cam_id-1] = gt[0] # x (in camera space)
-        xyz_9[1,cam_id-1] = gt[1] # y (in camera space)
-        xyz_9[2,cam_id-1] = gt[2] # z (in camera space)
-        
-        xyz_3 = merge_stuff(xyz_9)
-
-        # if counter > 1:
-        #     counter = 0
-        #     # print(" Cam #{:.3f} | [{:.3f}, {:.3f}] ---> ({:.3f}, {:.3f}) ---> ({:.3f}, {:.3f}) ".format(cam_id, focl[0,cam_id-1], focl[1,cam_id-1], px, py, angles[0,cam_id-1], angles[1,cam_id-1]))
-        #     # print(" [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-        #     # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-        #     print("xyz_3 [{:.3f}, {:.3f}, {:.3f}] \n\n".format(xyz_3[0], xyz_3[1], xyz_3[2]))
-    
-    return 0
-
-'''
-This functions determines the angular 'distance' between camera and object in planez XZ and YZ
-'''
-def get_angles_from_opt(x, y, z):
-    angles = np.zeros(2)
-    angles[0] = (180/math.pi)*math.atan2(x,z) + 180 # delta_x/delta_z
-    angles[1] = (180/math.pi)*math.atan2(y,z) + 180 # delta_y/delta_z
-
-    if(angles[0]>180):
-        angles[0] = 360-angles[0]
-    if(angles[1]>180):
-        angles[1] = 360-angles[1]
-    if(angles[0]<-180):
-        angles[0] = 360+angles[0]
-    if(angles[1]<-180):
-        angles[1] = 360+angles[1]
-
-    if(x < 0):
-        angles[0] = -angles[0]
-    if(y < 0):
-        angles[1] = -angles[1]
-
-    return angles
-
-
-# def get_w_gaussian(perspective, cam_pdf_params, c2w, v2c):
-    
-#     mu_c = np.zeros((3,4))
-#     sigma_c = np.zeros((3,4))
-#     mu_w = np.zeros((3,4))
-#     sigma_w = np.zeros((3,4))
-        
-#     # The gaussians are centered around the values given by the SNN (in camera space: 'perspective')
-#     for j in range(3): # x, y, z
-#         for i in range(3): # Cam 1, 2, 3
-#             mu_c[j,i] = perspective[j,i] + cam_pdf_params[i,j,0]
-#             sigma_c[j,i] = cam_pdf_params[i,j,1]    
-
-#     # The gaussians are transformed to world space and their product is calculated (once per axis)
-#     for j in range(3): # x, y, z
-#         for i in range(3): # Cam 1, 2, 3
-#             mu_w[j, i] = c2w[j,0,i]*v2c           [j,0,i]*mu_c[0,i] + c2w[j,1,i]*mu_c[1,i] + c2w[j,2,i]*mu_c[2,i] + c2w[j,3,i]
-#             sigma_w[j, i] = math.sqrt((c2w[j,0,i]*sigma_c[0,i])**2 +(c2w[j,1,i]*sigma_c[1,i])**2 + (c2w[j,2,i]*sigma_c[2,i])**2)
-        
-#         mu_w[j, 3], sigma_w[j, 3] = conflate(mu_w[j, 0:3], sigma_w[j, 0:3])
-    
-#     return mu_c, sigma_c, mu_w, sigma_w
 
 def use_xyz(queue):
 
@@ -410,19 +317,20 @@ def use_xyz(queue):
         print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
 
         # Go from angles to (x, y, z) again
-        new_x = z*math.tan(-angles[0, cam_id-1]*0.9*math.pi/180)
-        new_y = z*math.tan(-angles[1, cam_id-1]*1.1*math.pi/180)
+        new_z = z*1
+        new_x = new_z*math.tan(-angles[0, cam_id-1]*1*math.pi/180)
+        new_y = new_z*math.tan(-angles[1, cam_id-1]*1*math.pi/180)
 
         # poses of the virtual cameras based on angles calculated from pixel positions
-        # vir_poses = set_vir_poses(np.zeros((2,3))) 
-        vir_poses = set_vir_poses(angles)
+        vir_poses = set_vir_poses(np.zeros((2,3))) 
+        # vir_poses = set_vir_poses(angles)
 
         # transformation matrices
         v2c = get_transmats(vir_poses)
 
         # The virtual camera 'thinks' that the object is located in the center of the image at a distance Z=0.7
-        # vp = np.array([new_x, new_y, z*0.5, 1]) 
-        vp = np.array([0, 0, 0.7, 1])
+        vp = np.array([new_x, new_y, new_z, 1]) 
+        # vp = np.array([0, 0, 0.7, 1])
 
         # transformation from virtual camera space into real camera space
         cp = v2c[:,:,cam_id-1].dot(vp)
@@ -435,30 +343,9 @@ def use_xyz(queue):
         xyz_9[1,cam_id-1] = gt[1] # y (in camera space)
         xyz_9[2,cam_id-1] = gt[2] # z (in camera space)
 
-        if counter == -1:
-
-            print(" Old (x,y): [{:.3f}, {:.3f}] New (x,y): [{:.3f}, {:.3f}]".format(x, y, new_x, new_y))
-            print(" Cam #1 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0]))
-            print(" Cam #2 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,1], xyz_9[1,1], xyz_9[2,1]))
-            print(" Cam #3 | [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
-            print(angles)
-            print(vir_poses*180/math.pi)
-            print("\n\n\n")
-            print(v2c[:,:,0])
-            print(v2c[:,:,1])
-            print(v2c[:,:,2])
         
         xyz_3 = merge_stuff(xyz_9)
 
-        if counter == 1:
-            counter = 0
-            # print(" Cam #{:.3f} | [{:.3f}, {:.3f}] ---> ({:.3f}, {:.3f}) ---> ({:.3f}, {:.3f}) ".format(cam_id, focl[0,cam_id-1], focl[1,cam_id-1], px, py, angles[0,cam_id-1], angles[1,cam_id-1]))
-            # print(" [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-            # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-            print(" Old (x,y): [{:.3f}, {:.3f}] New (x,y): [{:.3f}, {:.3f}]".format(x, y, new_x, new_y))
-            print("xyz_3 [{:.3f}, {:.3f}, {:.3f}] \n\n".format(xyz_3[0], xyz_3[1], xyz_3[2]))
-            # time.sleep(15)
-    
     return 0
 
 def use_xyz_direclty(queue):
