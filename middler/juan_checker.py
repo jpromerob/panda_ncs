@@ -155,7 +155,8 @@ def use_xyz(queue, LED_queue):
         pixels = get_dvs_from_angles(angles[0:2, cam_id-1], focl, cam_id)
 
         # print(" Cam#{:.0f} --> ({:.3f}, {:.3f}) ".format(cam_id, pixels[0], pixels[1]))
-        LED_queue.put([cam_id, pixels[0], pixels[1]])
+        # print(" Cam#{:.0f} --> ({:.3f}, {:.3f}, {:.3f}) : ({:.3f}, {:.3f}) : ({:.3f}, {:.3f})".format(cam_id, x, y, z, angles[0, cam_id-1], angles[1, cam_id-1], pixels[0], pixels[1]))
+        LED_queue.put([cam_id, 320+pixels[0], 240+pixels[1]])
             
 
 
@@ -163,7 +164,7 @@ def use_xyz(queue, LED_queue):
     return 0
        
 
-def visualize(LED_queue):
+def visualize(LED_queue, op_mode):
 
     cam_shape = (480*2+3,640*2+3)
 
@@ -172,7 +173,6 @@ def visualize(LED_queue):
     y = [0, 0, 0]
 
     i = 0
-    print("I'm running")
     while True:
 
         image = np.zeros(cam_shape)
@@ -198,7 +198,12 @@ def visualize(LED_queue):
         image[480+1:480*2+1, 641:640*2+1] = 255*np.ones((480,640))
 
         counter = 0
-        while counter < 100:
+
+        if op_mode == 1:
+            c_max = 100
+        if op_mode == 2:
+            c_max = 25
+        while counter < c_max:
 
             counter += 1
 
@@ -270,7 +275,7 @@ if __name__ == "__main__":
     cam_1 = multiprocessing.Process(target=udpserver, args=(queue,1,))
     cam_2 = multiprocessing.Process(target=udpserver, args=(queue,2,))
     cam_3 = multiprocessing.Process(target=udpserver, args=(queue,3,))
-    v_all = multiprocessing.Process(target=visualize, args=(LED_queue,))
+    v_all = multiprocessing.Process(target=visualize, args=(LED_queue,op_mode, ))
 
     if op_mode == 1 :
         print("Using DVS")
