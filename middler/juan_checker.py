@@ -164,19 +164,31 @@ def use_xyz(queue, LED_queue):
     return 0
        
 
-def visualize(LED_queue, op_mode):
+def visualize(LED_queue, op_mode, rec_on, nb_port):
 
     cam_shape = (480*2+3,640*2+3)
-
 
     x = [0, 0, 0]
     y = [0, 0, 0]
 
     i = 0
+
+
+    if rec_on == 1:
+        server_addr = ('172.16.222.46', nb_port )
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print(s)
+        try:
+            s.connect(server_addr)
+            print("Connected to {:s}".format(repr(server_addr)))
+        except:
+            print("Recorder does not seem to be operational")
+            return 0
+
     while True:
 
-        image = np.zeros(cam_shape)
 
+        image = np.zeros(cam_shape)
 
         # Horizontal Divisions
         image[0,:] = 255
@@ -208,6 +220,11 @@ def visualize(LED_queue, op_mode):
             counter += 1
 
             datum = LED_queue.get()
+
+            if rec_on == 1:
+                payload_out = Payload(datum[0], datum[1], datum[2])
+                nsent = s.send(payload_out)
+
             cam_id = datum[0]
 
             x_0 = 0
@@ -235,26 +252,26 @@ def visualize(LED_queue, op_mode):
                 x_0 = 641
                 y_0 = 480
 
-            image[y_0-y[cam_id-1], x_0+x[cam_id-1]] = 255
-
             
             for i in range(6):
-                if x[cam_id-1]+i <= 640-1:
+                if x[cam_id-1]+i <= 640-1 and x[cam_id-1]+i > 0:
                     image[y_0-y[cam_id-1],x_0+x[cam_id-1]+i] = 255
-                if x[cam_id-1]-i > 0:
+                if x[cam_id-1]-i <= 640-1 and x[cam_id-1]-i > 0:
                     image[y_0-y[cam_id-1],x_0+x[cam_id-1]-i] = 255
-                if y[cam_id-1]+i <= 480-1:
+                if y[cam_id-1]+i <= 480-1 and y[cam_id-1]+i > 0:
                     image[y_0-(y[cam_id-1]+i), x_0+x[cam_id-1]] = 255
-                if y[cam_id-1]-i > 0:
+                if y[cam_id-1]-i <= 480-1 and y[cam_id-1]-i > 0:
                     image[y_0-(y[cam_id-1]-i), x_0+x[cam_id-1]] = 255
-
-
-
 
         cv2.imshow("frame", image)
         cv2.waitKey(1) 
 
+    if rec_on == 1:
+        print("Closing socket")
+        s.close()
+
     print("Bye bye visualize")
+
 
 
 
@@ -264,7 +281,9 @@ if __name__ == "__main__":
 
     try:
         op_mode = int(sys.argv[1])
+        rec_on = int(sys.argv[2])
     except:
+        print("Try: python3 juan_checker.py <op_mode (1|2 for DVS|OPT)> <recording (0|1 for off|on)>")
         quit()
 
     queue = multiprocessing.Queue()
@@ -272,17 +291,20 @@ if __name__ == "__main__":
 
     focl = set_focal_lengths()
 
-    cam_1 = multiprocessing.Process(target=udpserver, args=(queue,1,))
-    cam_2 = multiprocessing.Process(target=udpserver, args=(queue,2,))
-    cam_3 = multiprocessing.Process(target=udpserver, args=(queue,3,))
-    v_all = multiprocessing.Process(target=visualize, args=(LED_queue,op_mode, ))
 
     if op_mode == 1 :
         print("Using DVS")
         show = multiprocessing.Process(target=use_dvs, args=(queue,LED_queue, ))
+        nb_port = 2500
     if op_mode == 2 :
         print("Using OPT")
         show = multiprocessing.Process(target=use_xyz, args=(queue,LED_queue, ))
+        nb_port = 2700
+
+    cam_1 = multiprocessing.Process(target=udpserver, args=(queue,1,))
+    cam_2 = multiprocessing.Process(target=udpserver, args=(queue,2,))
+    cam_3 = multiprocessing.Process(target=udpserver, args=(queue,3,))
+    v_all = multiprocessing.Process(target=visualize, args=(LED_queue,op_mode, rec_on, nb_port))
 
     show.start()
     v_all.start()
