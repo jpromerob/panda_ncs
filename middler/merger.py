@@ -339,7 +339,7 @@ def old_use_pixels(queue,):
     return 0
 
 
-def use_dvs(queue,):
+def use_dvs(queue, ip_address, port_nb):
 
     global focl
 
@@ -347,7 +347,7 @@ def use_dvs(queue,):
     xyz_9 = np.zeros((3,3))
 
 
-    server_addr = ('172.16.222.31', 2600)
+    server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     try:
@@ -406,12 +406,12 @@ def define_object_pose(a2b, ground_truth):
 
     return perspective
 
-def use_xyz(queue):
+def use_xyz(queue, ip_address, port_nb):
 
     angles = np.zeros((2,3))
     xyz_9 = np.zeros((3,3))
     
-    server_addr = ('172.16.222.31', 2600)
+    server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     try:
@@ -484,6 +484,31 @@ if __name__ == "__main__":
     global cam_poses, c2w, focl
 
 
+    try:
+        d_source = sys.argv[1]
+        if d_source != "snn" and d_source != "opt":
+            print("Invalid data source")
+            quit()
+        else:
+            print("Valid data source!")
+
+        d_destin = sys.argv[2]
+        if d_destin != "nuc" and d_destin != "munin":
+            print("Invalid data destination")
+            quit()
+        else:
+            print("Valid data destination!")
+            port_nb = 2600
+            if d_destin == "nuc" : 
+                ip_address = "172.16.222.46"
+            if d_destin == "munin" : 
+                ip_address = "172.16.222.31"
+
+    except:
+        print("Try python3 merger.py <snn|opt> <nuc|munin>")
+        quit()
+
+
     queue = multiprocessing.Queue()
 
     focl = set_focal_lengths()
@@ -495,7 +520,11 @@ if __name__ == "__main__":
     cam_2 = multiprocessing.Process(target=udpserver, args=(queue,2,))
     cam_3 = multiprocessing.Process(target=udpserver, args=(queue,3,))
 
-    show = multiprocessing.Process(target=use_dvs, args=(queue,))
+
+    if d_source == "snn" : 
+        show = multiprocessing.Process(target=use_dvs, args=(queue, ip_address, port_nb))
+    if d_source == "opt" :
+        show = multiprocessing.Process(target=use_xyz, args=(queue, ip_address, port_nb))
 
     show.start()
     cam_1.start()
