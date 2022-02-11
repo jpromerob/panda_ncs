@@ -247,10 +247,9 @@ def get_gaussian(perspective, cam_pdf_params, a2b, b2c):
 
     return mu_c, sigma_c
 
-def merge_stuff(xyz_9, v2c):
+def merge_stuff(xyz_9, v2c, e_per):
 
     global cam_poses, c2w 
-    e_per = np.array([0.02, 0.02, 0.3]) 
     cam_pdf_params = produce_snn_stats(e_per)
 
     start = time.time()
@@ -262,7 +261,7 @@ def merge_stuff(xyz_9, v2c):
     xyz_3 = [mu_w[0,3], mu_w[1,3], mu_w[2,3]]
 
     # print("xyz_9: ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
-    print(" ---> xyz_3: ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
+    # print(" ---> xyz_3: ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
 
     return xyz_3
 
@@ -304,42 +303,8 @@ def get_angles_from_opt(x, y, z):
     return angles
 
 
-def old_use_pixels(queue,):
 
-    global focl
-
-    angles = np.zeros((2,3))
-    xyz_9 = np.zeros((3,3))
-
-    counter = 0
-    while(True):
-        counter += 1
-        datum = queue.get()
-        cam_id = datum[0]
-
-        px = datum[1]*320
-        py = datum[2]*240
-
-        angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)
-        # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-
-        # poses of the virtual cameras based on angles calculated from pixel positions
-        vir_poses = set_vir_poses(angles)
-
-        # transformation matrices
-        v2c = get_transmats(vir_poses)
-               
-        xyz_9[0,cam_id-1] = 0 # x (in camera space)
-        xyz_9[1,cam_id-1] = 0 # y (in camera space)
-        xyz_9[2,cam_id-1] = -0.7 # z (in camera space)
-
-        
-        xyz_3 = merge_stuff(xyz_9, v2c)
-
-    return 0
-
-
-def use_dvs(queue, ip_address, port_nb):
+def use_dvs(queue, ip_address, port_nb, e_per, fixed_z):
 
     global focl
 
@@ -374,10 +339,10 @@ def use_dvs(queue, ip_address, port_nb):
                 
             xyz_9[0,cam_id-1] = 0 # x (in camera space)
             xyz_9[1,cam_id-1] = 0 # y (in camera space)
-            xyz_9[2,cam_id-1] = -1.0 # z (in camera space)
+            xyz_9[2,cam_id-1] = fixed_z # z (in camera space)
 
             
-            xyz_3 = merge_stuff(xyz_9, v2c)
+            xyz_3 = merge_stuff(xyz_9, v2c, e_per)
 
             payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
             nsent = s.send(payload_out)
@@ -406,7 +371,7 @@ def define_object_pose(a2b, ground_truth):
 
     return perspective
 
-def use_xyz(queue, ip_address, port_nb):
+def use_xyz(queue, ip_address, port_nb, e_per, fixed_z):
 
     angles = np.zeros((2,3))
     xyz_9 = np.zeros((3,3))
@@ -441,10 +406,9 @@ def use_xyz(queue, ip_address, port_nb):
                 
             xyz_9[0,cam_id-1] = 0 # x (in camera space)
             xyz_9[1,cam_id-1] = 0 # y (in camera space)
-            xyz_9[2,cam_id-1] = vp[2]  # z (in camera space)
+            xyz_9[2,cam_id-1] = fixed_z # z (in camera space)
 
-            
-            xyz_3 = merge_stuff(xyz_9, v2c)
+            xyz_3 = merge_stuff(xyz_9, v2c, e_per)
 
             payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
             nsent = s.send(payload_out)
@@ -460,25 +424,6 @@ def use_xyz(queue, ip_address, port_nb):
 
     
     return 0
-
-def use_xyz_direclty(queue):
-
-    xyz_9 = np.zeros((3,3))
-    while(True):
-        datum = queue.get()
-        cam_id = datum[0]
-
-        xyz_9[0,cam_id-1] = np.array(datum[1]) # x (in camera space)
-        xyz_9[1,cam_id-1] = np.array(datum[2]) # y (in camera space)
-        xyz_9[2,cam_id-1] = np.array(datum[3]) # z (in camera space)
-        
-        xyz_3 = merge_stuff(xyz_9)
-
-        print("xyz_3 [{:.3f}, {:.3f}, {:.3f}] ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
-    
-    return 0
-
-
 
 
 
@@ -524,10 +469,21 @@ if __name__ == "__main__":
     cam_3 = multiprocessing.Process(target=udpserver, args=(queue,3,))
 
 
+
+    e_per = np.array([0.001, 0.001, 0.3]) 
+
+    try:
+        fixed_z = float(sys.argv[3])
+    except:
+        fixed_z = -0.8
+    
+    print("Fixed z = {:.3f} ".format(fixed_z))
+
+
     if d_source == "snn" : 
-        show = multiprocessing.Process(target=use_dvs, args=(queue, ip_address, port_nb))
+        show = multiprocessing.Process(target=use_dvs, args=(queue, ip_address, port_nb, e_per, fixed_z))
     if d_source == "opt" :
-        show = multiprocessing.Process(target=use_xyz, args=(queue, ip_address, port_nb))
+        show = multiprocessing.Process(target=use_xyz, args=(queue, ip_address, port_nb, e_per, fixed_z))
 
     show.start()
     cam_1.start()
