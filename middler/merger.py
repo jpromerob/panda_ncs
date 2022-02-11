@@ -178,7 +178,8 @@ def udpserver(queue, cam_id):
             buff = csock.recv(512)
             while buff:
                 payload_in = Payload.from_buffer_copy(buff)             
-                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z])
+                presence = 1
+                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, presence])
                 
                 buff = csock.recv(512)
             csock.close()
@@ -196,16 +197,28 @@ def udpserver(queue, cam_id):
 
 
 
-def conflate(mu, sigma):
+def conflate(mu, sigma, presence):
     
-    mu_1 = mu[0]
-    mu_2 = mu[1]
-    mu_3 = mu[2]
-    
-    ss_1 = sigma[0]**2
-    ss_2 = sigma[1]**2
-    ss_3 = sigma[2]**2
-    
+    if presence[0] == 1:
+        mu_1 = mu[0]
+        ss_1 = sigma[0]**2
+    else:
+        mu_1 = 0
+        ss_1 = 1
+
+    if presence[1] == 1:
+        mu_2 = mu[1]
+        ss_2 = sigma[1]**2
+    else:
+        mu_2 = 0
+        ss_2 = 1
+
+    if presence[2] == 1:
+        mu_3 = mu[2]        
+        ss_3 = sigma[2]**2
+    else:
+        mu_3 = 0
+        ss_3 = 1    
     
     mu_conflation = (ss_1*ss_2*mu_3 + ss_2*ss_3*mu_1 + ss_3*ss_1*mu_2)/(ss_3*ss_2 + ss_2*ss_1 + ss_1*ss_3)
     sigma_conflation = math.sqrt((ss_1 * ss_2 * ss_3)/(ss_1*ss_2 + ss_2*ss_3 + ss_3*ss_1))
@@ -213,7 +226,7 @@ def conflate(mu, sigma):
     
     return mu_conflation, sigma_conflation
 
-def get_gaussian(perspective, cam_pdf_params, a2b, b2c):
+def get_gaussian(perspective, cam_pdf_params, a2b, b2c, presence):
     
     mu_a = np.zeros((3,4))
     sigma_a = np.zeros((3,4))
@@ -241,19 +254,24 @@ def get_gaussian(perspective, cam_pdf_params, a2b, b2c):
             sigma_c[j, i] = math.sqrt((b2c[j,0,i]*sigma_b[0,i])**2 +(b2c[j,1,i]*sigma_b[1,i])**2 + (b2c[j,2,i]*sigma_b[2,i])**2)
 
 
+    # while True:
+    #     presence = np.random.randint(0, 2, 3, dtype=int)
+    #     if np.sum(presence) >= 2:
+    #         break
+    # presence = [1,1,1]
 
     for j in range(3): # x, y, z
-        mu_c[j, 3], sigma_c[j, 3] = conflate(mu_c[j, 0:3], sigma_c[j, 0:3])
+        mu_c[j, 3], sigma_c[j, 3] = conflate(mu_c[j, 0:3], sigma_c[j, 0:3], presence)
 
     return mu_c, sigma_c
 
-def merge_stuff(xyz_9, v2c, e_per):
+def merge_stuff(xyz_9, v2c, e_per, presence):
 
     global cam_poses, c2w 
     cam_pdf_params = produce_snn_stats(e_per)
 
     start = time.time()
-    mu_w, sigma_w = get_gaussian(xyz_9, cam_pdf_params, v2c, c2w)
+    mu_w, sigma_w = get_gaussian(xyz_9, cam_pdf_params, v2c, c2w, presence)
     stop = time.time()
     elapsed = stop - start
 
@@ -310,6 +328,7 @@ def use_dvs(queue, ip_address, port_nb, e_per, fixed_z):
 
     angles = np.zeros((2,3))
     xyz_9 = np.zeros((3,3))
+    presence = np.ones(3)
 
 
     server_addr = (ip_address, port_nb)
@@ -328,8 +347,14 @@ def use_dvs(queue, ip_address, port_nb, e_per, fixed_z):
             px = datum[1]*320
             py = datum[2]*240
 
-            angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)
-            # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
+            presence[cam_id-1] = datum[4]
+
+            angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)            
+
+            # # This should be removed when Jens sends 'presence' from sleipner
+            # if abs(angles[0, cam_id-1])>20 or abs(angles[1, cam_id-1])>20:
+            #     presence[cam_id-1] = 0                
+            #     print("Outside Cam#{:.0f}'s FOV".format(cam_id))
 
             # poses of the virtual cameras based on angles calculated from pixel positions
             vir_poses = set_vir_poses(angles)
@@ -342,7 +367,7 @@ def use_dvs(queue, ip_address, port_nb, e_per, fixed_z):
             xyz_9[2,cam_id-1] = fixed_z # z (in camera space)
 
             
-            xyz_3 = merge_stuff(xyz_9, v2c, e_per)
+            xyz_3 = merge_stuff(xyz_9, v2c, e_per, presence)
 
             payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
             nsent = s.send(payload_out)
@@ -375,6 +400,7 @@ def use_xyz(queue, ip_address, port_nb, e_per, fixed_z):
 
     angles = np.zeros((2,3))
     xyz_9 = np.zeros((3,3))
+    presence = np.ones(3)
     
     server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -393,7 +419,15 @@ def use_xyz(queue, ip_address, port_nb, e_per, fixed_z):
             y = np.array(datum[2])
             z = np.array(datum[3])
 
+            presence[cam_id-1] = datum[4]
+
             angles[0:2, cam_id-1] = get_angles_from_opt(x, y, z)
+            # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
+
+            # # This should be removed when Jens sends 'presence' from sleipner
+            # if abs(angles[0, cam_id-1])>20 or abs(angles[1, cam_id-1])>20:
+            #     presence[cam_id-1] = 0                
+            #     print("Outside Cam#{:.0f}'s FOV".format(cam_id))
 
             # poses of the virtual cameras based on angles calculated from pixel positions
             vir_poses = set_vir_poses(angles)
@@ -408,7 +442,7 @@ def use_xyz(queue, ip_address, port_nb, e_per, fixed_z):
             xyz_9[1,cam_id-1] = 0 # y (in camera space)
             xyz_9[2,cam_id-1] = fixed_z # z (in camera space)
 
-            xyz_3 = merge_stuff(xyz_9, v2c, e_per)
+            xyz_3 = merge_stuff(xyz_9, v2c, e_per, presence)
 
             payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
             nsent = s.send(payload_out)
