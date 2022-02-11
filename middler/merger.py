@@ -435,10 +435,13 @@ def use_xyz(queue, ip_address, port_nb):
 
             # transformation matrices
             v2c = get_transmats(vir_poses)
+            
+            # Get virtual pose
+            vp = define_object_pose(v2c[:,:,cam_id-1], np.array([x, y, z, 1]))
                 
             xyz_9[0,cam_id-1] = 0 # x (in camera space)
             xyz_9[1,cam_id-1] = 0 # y (in camera space)
-            xyz_9[2,cam_id-1] = -1.0 # z (in camera space)
+            xyz_9[2,cam_id-1] = vp[2]  # z (in camera space)
 
             
             xyz_3 = merge_stuff(xyz_9, v2c)

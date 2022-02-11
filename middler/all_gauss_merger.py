@@ -57,7 +57,8 @@ class mu_ss_payload(Structure):
                 ("mu_z_3", c_float),
                 ("ss_x_3", c_float),
                 ("ss_y_3", c_float),
-                ("ss_z_3", c_float)]
+                ("ss_z_3", c_float),
+                ("coor_f", c_float)]
 
                 
 def set_focal_lengths():
@@ -293,7 +294,7 @@ def get_gaussian(perspective, cam_pdf_params, a2b, b2c):
     for j in range(3): # x, y, z
         mu_c[j, 3], sigma_c[j, 3] = conflate(mu_c[j, 0:3], sigma_c[j, 0:3], presence)
 
-    return mu_c, sigma_c 
+    return mu_c, sigma_c, mu_b, sigma_b, mu_a, sigma_a 
 
 def merge_stuff(xyz_9, v2c):
 
@@ -302,13 +303,13 @@ def merge_stuff(xyz_9, v2c):
     cam_pdf_params = produce_snn_stats(e_per)
 
     start = time.time()
-    mu_w, sigma_w = get_gaussian(xyz_9, cam_pdf_params, v2c, c2w)
+    mu_w, ss_w, mu_r, ss_r, mu_v, ss_v = get_gaussian(xyz_9, cam_pdf_params, v2c, c2w)
     stop = time.time()
     elapsed = stop - start
 
     print("Consolidated xyz: ({:.3f}, {:.3f}, {:.3f}) ".format(mu_w[0,3], mu_w[1,3], mu_w[2,3]))
 
-    return mu_w, sigma_w
+    return mu_w, ss_w, mu_r, ss_r, mu_v, ss_v
 
 
 '''
@@ -367,6 +368,7 @@ def use_dvs(queue, ip_address, port_nb):
         counter = 0
         while(True):
             counter += 1
+
             datum = queue.get()
             cam_id = datum[0]
 
@@ -387,10 +389,25 @@ def use_dvs(queue, ip_address, port_nb):
             xyz_9[2,cam_id-1] = -0.8 # z (in camera space)
 
             
-            mu_w, ss_w = merge_stuff(xyz_9, v2c)
+            mu_w, ss_w, mu_r, ss_r, mu_v, ss_v = merge_stuff(xyz_9, v2c)
 
-            payload_out = mu_ss_payload(mu_w[0,3], mu_w[1,3], mu_w[2,3], ss_w[0,3], ss_w[1,3], ss_w[2,3], mu_w[0,0], mu_w[1,0], mu_w[2,0], ss_w[0,0], ss_w[1,0], ss_w[2,0], mu_w[0,1], mu_w[1,1], mu_w[2,1], ss_w[0,1], ss_w[1,1], ss_w[2,1], mu_w[0,2], mu_w[1,2], mu_w[2,2], ss_w[0,2], ss_w[1,2], ss_w[2,2])
-            nsent = s.send(payload_out)
+            if counter%3 == 0:
+                payload_out = mu_ss_payload(mu_w[0,3], mu_w[1,3], mu_w[2,3], ss_w[0,3], ss_w[1,3], ss_w[2,3], mu_w[0,0], mu_w[1,0], mu_w[2,0], ss_w[0,0], ss_w[1,0], ss_w[2,0], mu_w[0,1], mu_w[1,1], mu_w[2,1], ss_w[0,1], ss_w[1,1], ss_w[2,1], mu_w[0,2], mu_w[1,2], mu_w[2,2], ss_w[0,2], ss_w[1,2], ss_w[2,2], 0)
+                nsent = s.send(payload_out)
+
+            if counter%3 == 1:
+                payload_out = mu_ss_payload(mu_r[0,3], mu_r[1,3], mu_r[2,3], ss_r[0,3], ss_r[1,3], ss_r[2,3], mu_r[0,0], mu_r[1,0], mu_r[2,0], ss_r[0,0], ss_r[1,0], ss_r[2,0], mu_r[0,1], mu_r[1,1], mu_r[2,1], ss_r[0,1], ss_r[1,1], ss_r[2,1], mu_r[0,2], mu_r[1,2], mu_r[2,2], ss_r[0,2], ss_r[1,2], ss_r[2,2], 1)
+                nsent = s.send(payload_out)
+
+            if counter%3 == 2:
+                payload_out = mu_ss_payload(mu_v[0,3], mu_v[1,3], mu_v[2,3], ss_v[0,3], ss_v[1,3], ss_v[2,3], mu_v[0,0], mu_v[1,0], mu_v[2,0], ss_v[0,0], ss_v[1,0], ss_v[2,0], mu_v[0,1], mu_v[1,1], mu_v[2,1], ss_v[0,1], ss_v[1,1], ss_v[2,1], mu_v[0,2], mu_v[1,2], mu_v[2,2], ss_v[0,2], ss_v[1,2], ss_v[2,2], 2)
+                nsent = s.send(payload_out)
+
+            # print("Cam#1 mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,0], mu_v[1,0], mu_v[2,0]))
+            # print("Cam#2 mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,1], mu_v[1,1], mu_v[2,1]))
+            # print("Cam#3 mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,2], mu_v[1,2], mu_v[2,2]))
+            # print("Cam#k mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,3], mu_v[1,3], mu_v[2,3]))
+            # print("\n\n\n")
 
     except AttributeError as ae:
         print("Error creating the socket: {}".format(ae))
@@ -454,10 +471,27 @@ def use_xyz(queue, ip_address, port_nb):
             xyz_9[2,cam_id-1] = -0.8 #vp[2]  # z (in camera space)
 
             
-            mu_w, ss_w = merge_stuff(xyz_9, v2c)
+            
+            mu_w, ss_w, mu_r, ss_r, mu_v, ss_v = merge_stuff(xyz_9, v2c)
 
-            payload_out = mu_ss_payload(mu_w[0,3], mu_w[1,3], mu_w[2,3], ss_w[0,3], ss_w[1,3], ss_w[2,3], mu_w[0,0], mu_w[1,0], mu_w[2,0], ss_w[0,0], ss_w[1,0], ss_w[2,0], mu_w[0,1], mu_w[1,1], mu_w[2,1], ss_w[0,1], ss_w[1,1], ss_w[2,1], mu_w[0,2], mu_w[1,2], mu_w[2,2], ss_w[0,2], ss_w[1,2], ss_w[2,2])
-            nsent = s.send(payload_out)
+            if counter%3 == 0:
+                payload_out = mu_ss_payload(mu_w[0,3], mu_w[1,3], mu_w[2,3], ss_w[0,3], ss_w[1,3], ss_w[2,3], mu_w[0,0], mu_w[1,0], mu_w[2,0], ss_w[0,0], ss_w[1,0], ss_w[2,0], mu_w[0,1], mu_w[1,1], mu_w[2,1], ss_w[0,1], ss_w[1,1], ss_w[2,1], mu_w[0,2], mu_w[1,2], mu_w[2,2], ss_w[0,2], ss_w[1,2], ss_w[2,2], 0)
+                nsent = s.send(payload_out)
+
+            if counter%3 == 1:
+                payload_out = mu_ss_payload(mu_r[0,3], mu_r[1,3], mu_r[2,3], ss_r[0,3], ss_r[1,3], ss_r[2,3], mu_r[0,0], mu_r[1,0], mu_r[2,0], ss_r[0,0], ss_r[1,0], ss_r[2,0], mu_r[0,1], mu_r[1,1], mu_r[2,1], ss_r[0,1], ss_r[1,1], ss_r[2,1], mu_r[0,2], mu_r[1,2], mu_r[2,2], ss_r[0,2], ss_r[1,2], ss_r[2,2], 1)
+                nsent = s.send(payload_out)
+
+            if counter%3 == 2:
+                payload_out = mu_ss_payload(mu_v[0,3], mu_v[1,3], mu_v[2,3], ss_v[0,3], ss_v[1,3], ss_v[2,3], mu_v[0,0], mu_v[1,0], mu_v[2,0], ss_v[0,0], ss_v[1,0], ss_v[2,0], mu_v[0,1], mu_v[1,1], mu_v[2,1], ss_v[0,1], ss_v[1,1], ss_v[2,1], mu_v[0,2], mu_v[1,2], mu_v[2,2], ss_v[0,2], ss_v[1,2], ss_v[2,2], 2)
+                nsent = s.send(payload_out)
+
+            # print("Cam#1 mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,0], mu_v[1,0], mu_v[2,0]))
+            # print("Cam#2 mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,1], mu_v[1,1], mu_v[2,1]))
+            # print("Cam#3 mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,2], mu_v[1,2], mu_v[2,2]))
+            # print("Cam#k mu_v(x, y, z) = [{:.3f}, {:.3f}, {:.3f}] ".format(mu_v[0,3], mu_v[1,3], mu_v[2,3]))
+            # print("\n\n\n")
+            
 
     except AttributeError as ae:
         print("Error creating the socket: {}".format(ae))
