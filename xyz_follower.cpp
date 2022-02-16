@@ -646,6 +646,7 @@ void move_end_effector(char* robot_ip) {
   damping.bottomRightCorner(3, 3) << 2.0 * sqrt(rotational_stiffness) *
                                          Eigen::MatrixXd::Identity(3, 3);
 
+
   try {
 
     // connect to robot
@@ -654,7 +655,8 @@ void move_end_effector(char* robot_ip) {
     // load the kinematics and dynamics model
     franka::Model model = robot.loadModel();
 
-    franka::RobotState initial_state = robot.readOnce();
+    franka::RobotState first_state = robot.readOnce();
+    franka::RobotState initial_state = first_state;
 
 
 
@@ -670,7 +672,7 @@ void move_end_effector(char* robot_ip) {
         impedance_control_callback = [&](const franka::RobotState& robot_state,
                                          franka::Duration /*duration*/) -> franka::Torques {
 
-                                          
+                            
       mutex_nextcoor.lock();
       c_target.x = validate(robot_state.O_T_EE[12], nextcoor.x);
       c_target.y = validate(robot_state.O_T_EE[13], nextcoor.y);
@@ -683,6 +685,8 @@ void move_end_effector(char* robot_ip) {
       initial_state.O_T_EE[12] = c_target.x;
       initial_state.O_T_EE[13] = c_target.y;
       initial_state.O_T_EE[14] = c_target.z;
+      initial_state.q_d[5] = first_state.q_d[5]; 
+      initial_state.q_d[6] = first_state.q_d[6]; 
 
 
       // equilibrium point is the initial position
@@ -708,7 +712,7 @@ void move_end_effector(char* robot_ip) {
       // compute error to desired equilibrium pose
       // position error
       Eigen::Matrix<double, 6, 1> error;
-      error.head(3) << position - position_d;
+      error.head(3) << 1.5*(position - position_d);
 
       // orientation error
       // "difference" quaternion
