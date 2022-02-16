@@ -28,7 +28,13 @@ global cam_poses, r2w, r_rtl, focl
 
 
 """ This class defines a C-like struct """
-class Payload(Structure):
+class PayloadSleipner(Structure):
+    _fields_ = [("x", c_float),
+                ("y", c_float),
+                ("z", c_float),
+                ("p", c_float)]
+
+class PayloadMunin(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
                 ("z", c_float)]
@@ -319,9 +325,9 @@ def udpserver(queue, cam_id):
 
             buff = csock.recv(512)
             while buff:
-                payload_in = Payload.from_buffer_copy(buff)             
-                presence = 1
-                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, presence])
+                payload_in = PayloadSleipner.from_buffer_copy(buff)       
+                presence = np.random.randint(2)
+                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
                 
                 buff = csock.recv(512)
             csock.close()
@@ -337,15 +343,119 @@ def udpserver(queue, cam_id):
         ssock.close()
 
 
-# datum = queue.get()
-# cam_id = datum[0]
+''' Create Multivariate Gaussian Distributions'''
+def create_mgd(v2r, v_obj_poses):   
 
-# px = datum[1]*320
-# py = datum[2]*240
+    global r2w, r_rtl, μ, Σ
 
-# presence[cam_id-1] = datum[4]
+    r_μ = np.zeros((3,3))
+    r_Σ = np.zeros((3,3,3))
+    w_μ = np.zeros((3,3))
+    w_Σ = np.zeros((3,3,3))
+    new_μ = np.zeros((4,3)) # including a '1' at the end
+    for k in range(3):
+        
+        # @TODO: only for testing purposes
+#         μ[2] = v_obj_poses[2,k]
+                                      
+        # Rotating Means from virtual-cam space to real-cam space  
+        r_μ[:,k] = v2r[:,:,k] @ μ
+                 
+        # Rotating Means from real-cam space to world space 
+        w_μ[:,k] = r2w[:,:,k] @ r_μ[:,k]
+    
+        # Translating Means from Camera (Real=Virtual) space to World space 
+        new_μ[:,k] = r_trl[:,:, k] @ [w_μ[0,k], w_μ[1,k], w_μ[2,k],1]                     
+                 
+        # Rotating Covariance Matrix from virtual-cam space to real-cam space  
+        r_Σ[:,:,k] = v2r[:,:,k] @ Σ @ v2r[:,:,k].T  
+                 
+        # Rotating Covariance Matrix from real-cam space to world space  
+        w_Σ[:,:,k] = r2w[:,:,k] @ r_Σ[:,:,k] @ r2w[:,:,k].T 
+    
+    rv_1 = multivariate_normal(new_μ[0:3,0], w_Σ[:,:,0])
+    rv_2 = multivariate_normal(new_μ[0:3,1], w_Σ[:,:,1])
+    rv_3 = multivariate_normal(new_μ[0:3,2], w_Σ[:,:,2])
+    
+    return new_μ, [rv_1, rv_2, rv_3]
 
-# angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)  
+def predict_pose(rv, mean, presence):
+    
+        
+    nb_pts = 9
+    diff = 0.5 # 50[cm]
+
+
+    # use 'mean' only from cameras with 'presence'
+    idx_pre = presence > 0 
+    useful_mean = mean[:,idx_pre]
+    x_0 = np.mean(useful_mean[0,:])
+    y_0 = np.mean(useful_mean[1,:])
+    z_0 = np.mean(useful_mean[2,:])
+    
+    count = 0
+
+    while True:
+
+        nb_pts = nb_pts*(1+count)-count
+
+        lims = np.array([[x_0-diff, x_0+diff],[y_0-diff, y_0+diff],[z_0-diff, z_0+diff]])   
+
+        x = np.linspace(lims[0,0], lims[0,1], num=nb_pts) 
+        y = np.linspace(lims[1,0], lims[1,1], num=nb_pts)
+        z = np.linspace(lims[2,0], lims[2,1], num=nb_pts)
+
+        xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
+    
+        xyz = np.zeros((nb_pts,nb_pts, nb_pts,3))
+        xyz[:,:,:,0] = xx
+        xyz[:,:,:,1] = yy
+        xyz[:,:,:,2] = zz
+
+        # Getting joint probabilities
+        start = datetime.datetime.now()
+
+        if presence[0] > 0:
+            p1 = rv[0].pdf(xyz)
+        else:
+            p1 = 1
+
+        if presence[1] > 0:
+            p2 = rv[1].pdf(xyz)
+        else:
+            p2 = 1
+
+        if presence[2] > 0:
+            p3 = rv[2].pdf(xyz)
+        else:
+            p3 = 1
+
+
+
+        p = np.cbrt(p1*p2*p3)
+
+
+        stop = datetime.datetime.now()
+        elapsed = stop - start
+
+        # Indices of Max Probability
+        imp = np.unravel_index(np.argmax(p, axis=None), p.shape) 
+
+        x_0 = x[imp[0]]
+        y_0 = y[imp[1]]
+        z_0 = z[imp[2]]
+
+        
+        count+= 1     
+        diff = 2*diff/(nb_pts-3) # 5cm
+        if count > 2:
+            # print("Joint probabilities obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
+            # print("Prediction: ({:.3f}, {:.3f}, {:.3f})".format(x[imp[0]], y[imp[1]], z[imp[2]]))
+            break
+
+    prediction = np.array([x_0, y_0, z_0])
+    
+    return prediction
 
 def use_dvs(queue, ip_address, port_nb):
 
@@ -365,6 +475,7 @@ def use_dvs(queue, ip_address, port_nb):
 
 
     presence = np.ones(3)
+    prediction = np.ones(3)
     
     server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -405,11 +516,14 @@ def use_dvs(queue, ip_address, port_nb):
             
             new_μ, rv = create_mgd(v2r, v_obj_poses)
 
-            # # Do predictions
-            prediction = predict_pose(rv, new_μ)
+              
+            print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+            if np.sum(presence) >= 2:
+                # Do predictions
+                prediction = predict_pose(rv, new_μ, presence)
+           
 
-            # prediction = [-0.35,0.5,0.95]
-            payload_out = Payload(prediction[0], prediction[1], prediction[2])
+            payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
     except AttributeError as ae:
@@ -423,42 +537,6 @@ def use_dvs(queue, ip_address, port_nb):
 
     
     return 0
-
-''' Create Multivariate Gaussian Distributions'''
-def create_mgd(v2r, v_obj_poses):   
-
-    global r2w, r_rtl, μ, Σ
-
-    r_μ = np.zeros((3,3))
-    r_Σ = np.zeros((3,3,3))
-    w_μ = np.zeros((3,3))
-    w_Σ = np.zeros((3,3,3))
-    new_μ = np.zeros((4,3)) # including a '1' at the end
-    for k in range(3):
-        
-        # @TODO: only for testing purposes
-#         μ[2] = v_obj_poses[2,k]
-                                      
-        # Rotating Means from virtual-cam space to real-cam space  
-        r_μ[:,k] = v2r[:,:,k] @ μ
-                 
-        # Rotating Means from real-cam space to world space 
-        w_μ[:,k] = r2w[:,:,k] @ r_μ[:,k]
-    
-        # Translating Means from Camera (Real=Virtual) space to World space 
-        new_μ[:,k] = r_trl[:,:, k] @ [w_μ[0,k], w_μ[1,k], w_μ[2,k],1]                     
-                 
-        # Rotating Covariance Matrix from virtual-cam space to real-cam space  
-        r_Σ[:,:,k] = v2r[:,:,k] @ Σ @ v2r[:,:,k].T  
-                 
-        # Rotating Covariance Matrix from real-cam space to world space  
-        w_Σ[:,:,k] = r2w[:,:,k] @ r_Σ[:,:,k] @ r2w[:,:,k].T 
-    
-    rv_1 = multivariate_normal(new_μ[0:3,0], w_Σ[:,:,0])
-    rv_2 = multivariate_normal(new_μ[0:3,1], w_Σ[:,:,1])
-    rv_3 = multivariate_normal(new_μ[0:3,2], w_Σ[:,:,2])
-    
-    return new_μ, [rv_1, rv_2, rv_3]
 
 
 def use_xyz(queue, ip_address, port_nb):
@@ -477,6 +555,7 @@ def use_xyz(queue, ip_address, port_nb):
 
 
     presence = np.ones(3)
+    prediction = np.ones(3)
     
     server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -516,11 +595,13 @@ def use_xyz(queue, ip_address, port_nb):
             
             new_μ, rv = create_mgd(v2r, v_obj_poses)
 
-            # # Do predictions
-            prediction = predict_pose(rv, new_μ)
+              
+            print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+            if np.sum(presence) >= 2:
+                # Do predictions
+                prediction = predict_pose(rv, new_μ, presence)
 
-            # prediction = [-0.35,0.5,0.95]
-            payload_out = Payload(prediction[0], prediction[1], prediction[2])
+            payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
     except AttributeError as ae:
@@ -536,61 +617,6 @@ def use_xyz(queue, ip_address, port_nb):
     return 0
 
     
-def predict_pose(rv, mean):
-    
-        
-    nb_pts = 21
-
-    diff = 0.5 # 50[cm]
-
-    x_0 = np.mean(mean[0,:])
-    y_0 = np.mean(mean[1,:])
-    z_0 = np.mean(mean[2,:])
-    
-    lims = np.array([[x_0-diff, x_0+diff],[y_0-diff, y_0+diff],[z_0-diff, z_0+diff]])
-    count = 0
-
-    while True:
-
-        nb_pts = nb_pts*(1+count)-count
-        x = np.linspace(lims[0,0], lims[0,1], num=nb_pts) 
-        y = np.linspace(lims[1,0], lims[1,1], num=nb_pts)
-        z = np.linspace(lims[2,0], lims[2,1], num=nb_pts)
-
-        xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
-    
-        xyz = np.zeros((nb_pts,nb_pts, nb_pts,3))
-        xyz[:,:,:,0] = xx
-        xyz[:,:,:,1] = yy
-        xyz[:,:,:,2] = zz
-
-        # Getting joint probabilities
-        start = datetime.datetime.now()
-
-        p1 = rv[0].pdf(xyz)
-        p2 = rv[1].pdf(xyz)
-        p3 = rv[2].pdf(xyz)
-
-        p = np.cbrt(p1*p2*p3)
-
-
-        stop = datetime.datetime.now()
-        elapsed = stop - start
-
-        # Indices of Max Probability
-        imp = np.unravel_index(np.argmax(p, axis=None), p.shape) 
-        prediction = [x[imp[0]], y[imp[1]], z[imp[2]]]
-
-        
-        count+= 1     
-        delta = 0.06 # 5cm
-        lims = np.array([[x[imp[0]]-delta, x[imp[0]]+delta],[y[imp[1]]-delta, y[imp[1]]+delta],[z[imp[2]]-delta, z[imp[2]]+delta]])
-        if count > 1:
-            # print("Joint probabilities obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
-            # print("Prediction: ({:.3f}, {:.3f}, {:.3f})".format(x[imp[0]], y[imp[1]], z[imp[2]]))
-            break
-    
-    return prediction
   
 
 if __name__ == "__main__":
@@ -645,12 +671,12 @@ if __name__ == "__main__":
     if d_source == "snn" : 
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.75])
-        Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3]])    
+        Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,2]])    
         show = multiprocessing.Process(target=use_dvs, args=(queue, ip_address, port_nb))
     if d_source == "opt" :
         # Mean array and covariance matrix in virtual camera space
-        μ = np.array([0,0,-0.75])
-        Σ = np.array([[0.02,0,0],[0,0.02,0],[0,0,1.5]])    
+        μ = np.array([0,0,-0.9])
+        Σ = np.array([[0.02,0,0],[0,0.02,0],[0,0,1.8]])    
         show = multiprocessing.Process(target=use_xyz, args=(queue, ip_address, port_nb))
 
     show.start()
