@@ -380,85 +380,85 @@ def create_mgd(v2r, v_obj_poses):
     return new_μ, w_Σ, [rv_1, rv_2, rv_3]
 
 
-def predict_pose(rv, mean, presence):
+# def predict_pose(rv, mean, presence):
     
 
-    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+#     print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
         
-    nb_pts = 11
-    diff = 0.5 # 50[cm]
+#     nb_pts = 11
+#     diff = 0.5 # 50[cm]
 
 
-    # use 'mean' only from cameras with 'presence'
-    idx_pre = presence > 0 
-    useful_mean = mean[:,idx_pre]
-    x_0 = np.mean(useful_mean[0,:])
-    y_0 = np.mean(useful_mean[1,:])
-    z_0 = np.mean(useful_mean[2,:])
+#     # use 'mean' only from cameras with 'presence'
+#     idx_pre = presence > 0 
+#     useful_mean = mean[:,idx_pre]
+#     x_0 = np.mean(useful_mean[0,:])
+#     y_0 = np.mean(useful_mean[1,:])
+#     z_0 = np.mean(useful_mean[2,:])
     
-    count = 0
+#     count = 0
 
-    start = datetime.datetime.now()
-    while True:
+#     start = datetime.datetime.now()
+#     while True:
 
-        nb_pts = nb_pts*(1+count)-count
+#         nb_pts = nb_pts*(1+count)-count
 
-        lims = np.array([[x_0-diff, x_0+diff],[y_0-diff, y_0+diff],[z_0-diff, z_0+diff]])   
+#         lims = np.array([[x_0-diff, x_0+diff],[y_0-diff, y_0+diff],[z_0-diff, z_0+diff]])   
 
-        x = np.linspace(lims[0,0], lims[0,1], num=nb_pts) 
-        y = np.linspace(lims[1,0], lims[1,1], num=nb_pts)
-        z = np.linspace(lims[2,0], lims[2,1], num=nb_pts)
+#         x = np.linspace(lims[0,0], lims[0,1], num=nb_pts) 
+#         y = np.linspace(lims[1,0], lims[1,1], num=nb_pts)
+#         z = np.linspace(lims[2,0], lims[2,1], num=nb_pts)
 
-        xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
+#         xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
     
-        xyz = np.zeros((nb_pts,nb_pts, nb_pts,3))
-        xyz[:,:,:,0] = xx
-        xyz[:,:,:,1] = yy
-        xyz[:,:,:,2] = zz
+#         xyz = np.zeros((nb_pts,nb_pts, nb_pts,3))
+#         xyz[:,:,:,0] = xx
+#         xyz[:,:,:,1] = yy
+#         xyz[:,:,:,2] = zz
 
 
-        if presence[0] > 0:
-            p1 = rv[0].pdf(xyz)
-        else:
-            p1 = 1
+#         if presence[0] > 0:
+#             p1 = rv[0].pdf(xyz)
+#         else:
+#             p1 = 1
 
-        if presence[1] > 0:
-            p2 = rv[1].pdf(xyz)
-        else:
-            p2 = 1
+#         if presence[1] > 0:
+#             p2 = rv[1].pdf(xyz)
+#         else:
+#             p2 = 1
 
-        if presence[2] > 0:
-            p3 = rv[2].pdf(xyz)
-        else:
-            p3 = 1
-
-
-
-        p = np.cbrt(p1*p2*p3)
+#         if presence[2] > 0:
+#             p3 = rv[2].pdf(xyz)
+#         else:
+#             p3 = 1
 
 
 
-        # Indices of Max Probability
-        imp = np.unravel_index(np.argmax(p, axis=None), p.shape) 
+#         p = np.cbrt(p1*p2*p3)
 
-        x_0 = x[imp[0]]
-        y_0 = y[imp[1]]
-        z_0 = z[imp[2]]
+
+
+#         # Indices of Max Probability
+#         imp = np.unravel_index(np.argmax(p, axis=None), p.shape) 
+
+#         x_0 = x[imp[0]]
+#         y_0 = y[imp[1]]
+#         z_0 = z[imp[2]]
 
         
-        count+= 1     
-        diff = 2*diff/(nb_pts-3) # 5cm
-        if count > 1:
-            # print("Prediction: ({:.3f}, {:.3f}, {:.3f})".format(x[imp[0]], y[imp[1]], z[imp[2]]))
-            break
+#         count+= 1     
+#         diff = 2*diff/(nb_pts-3) # 5cm
+#         if count > 1:
+#             # print("Prediction: ({:.3f}, {:.3f}, {:.3f})".format(x[imp[0]], y[imp[1]], z[imp[2]]))
+#             break
 
-    stop = datetime.datetime.now()
-    elapsed = stop - start
-    # print("Joint probabilities obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
+#     stop = datetime.datetime.now()
+#     elapsed = stop - start
+#     # print("Joint probabilities obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
 
-    prediction = np.array([x_0, y_0, z_0])
+#     prediction = np.array([x_0, y_0, z_0])
     
-    return prediction
+#     return prediction
 
 def use_dvs(queue, ip_address, port_nb):
 
@@ -524,14 +524,13 @@ def use_dvs(queue, ip_address, port_nb):
               
             if np.sum(presence) >= 2:
                 # Do predictions
-                prediction = predict_pose(rv, new_μ, presence)
-                # mu_conflation = conflate3D(new_μ[0:3,:], w_Σ, presence)
-                # print("P : [{:.3f}, {:.3f}, {:.3f}] vs C : [{:.3f}, {:.3f}, {:.3f}] ".format(prediction[0], prediction[1], prediction[2], mu_conflation[0], mu_conflation[1], mu_conflation[2]))
+                prediction = analytical(new_μ, w_Σ, presence)
+                # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
            
 
             stop = datetime.datetime.now()
             elapsed = stop - start
-            print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
+            # print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
@@ -547,72 +546,43 @@ def use_dvs(queue, ip_address, port_nb):
     
     return 0
 
-def conflate1D(μ, Σ, presence):
-    
+
+def analytical(μ, Σ, presence):
+
+    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
 
     mu = np.zeros(3)
-    sigma_conflation = np.zeros(3)
-    sigma = np.zeros(4)
-
-    for k in range(3): # for x, y, z
-        if presence[0] == 1:
-            mu_1 = μ[k,0]
-            s_1 = Σ[k,k,0]**2
-        else:
-            mu_1 = np.zeros(3)
-            s_1 = np.identity(3)
-
-        if presence[1] == 1:
-            mu_2 = μ[k,1]
-            s_2 = Σ[k,k,1]**2
-        else:
-            mu_2 = np.zeros(3)
-            s_2 = np.identity(3)
-
-        if presence[2] == 1:
-            mu_3 = μ[k,2]
-            s_3 = Σ[k,k,2]**2
-        else:
-            mu_3 = np.zeros(3)
-            s_3 = np.identity(3) 
-    
-        mu[k] = (s_1*s_2*mu_3 + s_2*s_3*mu_1 + s_3*s_1*mu_2)/(s_3*s_2 + s_2*s_1 + s_1*s_3)
-    
-    return mu
-
-def conflate3D(μ, Σ, presence):
+    V_n_p = np.zeros((3,3)) 
     
     if presence[0] == 1:
-        mu_1 = μ[:,0]
-        s_1 = Σ[:,:,0]
+        V_1 = np.linalg.inv(Σ[:,:,0])
+        V_n_p += V_1
+        μ_1 = μ[0:3,0]
     else:
-        mu_1 = np.zeros(3)
-        s_1 = np.identity(3)
+        V_1 = np.zeros((3,3)) 
+        μ_1 = np.zeros(3)
 
     if presence[1] == 1:
-        mu_2 = μ[:,1]
-        s_2 = Σ[:,:,1]
+        V_2 = np.linalg.inv(Σ[:,:,1])
+        V_n_p += V_2
+        μ_2 = μ[0:3,1]
     else:
-        mu_2 = np.zeros(3)
-        s_2 = np.identity(3)
+        V_2 = np.zeros((3,3)) 
+        μ_2 = np.zeros(3)
 
     if presence[2] == 1:
-        mu_3 = μ[:,2]
-        s_3 = Σ[:,:,2]
+        V_3 = np.linalg.inv(Σ[:,:,2])
+        V_n_p += V_3
+        μ_3 = μ[0:3,2]
     else:
-        mu_3 = np.zeros(3)
-        s_3 = np.identity(3)
-        
+        V_3 = np.zeros((3,3)) 
+        μ_3 = np.zeros(3)
 
-    num = ((s_1 * s_2) @ mu_3 ) + ((s_2 * s_3) @ mu_1) + ((s_1 * s_3) @ mu_2)
-    den = (s_2 * s_3) + (s_1 * s_2) + (s_1* s_3)
+    if np.sum(presence)>=2:
+        V_n =np.linalg.inv(V_n_p)
+        mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n
 
-
-    n_d = np.linalg.inv(den) @ num
-
-    mu_conflation = n_d
-
-    return mu_conflation
+    return mu
     
 
 def use_xyz(queue, ip_address, port_nb):
@@ -676,14 +646,13 @@ def use_xyz(queue, ip_address, port_nb):
               
             if np.sum(presence) >= 2:
                 # Do predictions
-                prediction = predict_pose(rv, new_μ, presence)
-                # mu_conflation = conflate1D(new_μ[0:3,:], w_Σ, presence)
-                # print("P : [{:.3f}, {:.3f}, {:.3f}] vs C : [{:.3f}, {:.3f}, {:.3f}] ".format(prediction[0], prediction[1], prediction[2], mu_conflation[0], mu_conflation[1], mu_conflation[2]))
+                prediction = analytical(new_μ, w_Σ, presence)
+                # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
 
 
             stop = datetime.datetime.now()
             elapsed = stop - start
-            print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
+            # print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
