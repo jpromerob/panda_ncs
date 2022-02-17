@@ -31,7 +31,8 @@ global cam_poses, c2w, focl
 class Payload(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
-                ("z", c_float)]
+                ("z", c_float),
+                ("p", c_float)]
                 
 def set_focal_lengths():
 
@@ -68,7 +69,7 @@ def udpserver(queue, cam_id):
             buff = csock.recv(512)
             while buff:
                 payload_in = Payload.from_buffer_copy(buff)             
-                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z])
+                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
                 
                 buff = csock.recv(512)
             csock.close()
@@ -121,10 +122,13 @@ def get_dvs_from_angles(angles, focl, cam_id):
 def use_dvs(queue,LED_queue):
 
 
+    presence = np.ones(3)
     while(True):
         
         datum = queue.get()
         cam_id = datum[0]
+        presence[cam_id-1] = np.array(datum[4])
+        print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
 
         px = (datum[1]+1)*320
         py = (datum[2]+1)*240
@@ -140,6 +144,7 @@ def use_xyz(queue, LED_queue):
 
     angles = np.zeros((2,3))
     
+    presence = np.ones(3)
    
     while(True):
 
@@ -149,6 +154,7 @@ def use_xyz(queue, LED_queue):
         x = np.array(datum[1])
         y = np.array(datum[2])
         z = np.array(datum[3])
+        presence[cam_id-1] = np.array(datum[4])
 
         angles[0:2, cam_id-1] = get_angles_from_opt(x, y, z)
 
@@ -157,6 +163,7 @@ def use_xyz(queue, LED_queue):
         # print(" Cam#{:.0f} --> ({:.3f}, {:.3f}) ".format(cam_id, pixels[0], pixels[1]))
         # print(" Cam#{:.0f} --> ({:.3f}, {:.3f}, {:.3f}) : ({:.3f}, {:.3f}) : ({:.3f}, {:.3f})".format(cam_id, x, y, z, angles[0, cam_id-1], angles[1, cam_id-1], pixels[0], pixels[1]))
         LED_queue.put([cam_id, 320+pixels[0], 240+pixels[1]])
+        print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
             
 
 
