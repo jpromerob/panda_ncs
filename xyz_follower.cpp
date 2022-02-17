@@ -142,8 +142,8 @@ double check_limit(double value, char axis) {
 /***********************************************************************************************/
 void save_nextcoor(double x, double y, double z) {
 
-  double offset_x = 0.10; // offset from object origin to robot end effector
-  double offset_y = 0.10;
+  double offset_x = 0.0; // offset from object origin to robot end effector
+  double offset_y = 0.20;
   double offset_z = 0.10;
 
   if (mutex_nextcoor.try_lock()) {
