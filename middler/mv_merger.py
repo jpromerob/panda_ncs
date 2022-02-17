@@ -477,6 +477,7 @@ def use_dvs(queue, ip_address, port_nb):
     new_μ = np.zeros((4,3)) # including a '1' at the end
 
 
+    oldsence = np.ones(3)
     presence = np.ones(3)
     prediction = np.ones(3)
     
@@ -496,6 +497,9 @@ def use_dvs(queue, ip_address, port_nb):
                 datum = queue.get()
                 cam_id = datum[0]
                 presence[cam_id-1] = datum[4]
+                if oldsence[cam_id-1] != presence[cam_id-1]:
+                    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+                    oldsence[cam_id-1] = presence[cam_id-1]
 
                 px = datum[1]*320
                 py = datum[2]*240
@@ -549,7 +553,6 @@ def use_dvs(queue, ip_address, port_nb):
 
 def analytical(μ, Σ, presence):
 
-    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
 
     mu = np.zeros(3)
     V_n_p = np.zeros((3,3)) 
@@ -600,6 +603,7 @@ def use_xyz(queue, ip_address, port_nb):
     new_μ = np.zeros((4,3)) # including a '1' at the end
 
 
+    oldsence = np.ones(3)
     presence = np.ones(3)
     prediction = np.ones(3)
     
@@ -619,6 +623,10 @@ def use_xyz(queue, ip_address, port_nb):
                 datum = queue.get()
                 cam_id = datum[0]
                 presence[cam_id-1] = datum[4]
+                if oldsence[cam_id-1] != presence[cam_id-1]:
+                    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+                    oldsence[cam_id-1] = presence[cam_id-1]
+                
 
                 r_obj_poses[:, cam_id-1] = [datum[1], datum[2], datum[3]]
                 r_obj_angles[:, cam_id-1] = get_angles_from_pos(r_obj_poses[:, cam_id-1])
