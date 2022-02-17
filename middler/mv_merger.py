@@ -382,6 +382,8 @@ def create_mgd(v2r, v_obj_poses):
 
 def predict_pose(rv, mean, presence):
     
+
+    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
         
     nb_pts = 11
     diff = 0.5 # 50[cm]
@@ -396,6 +398,7 @@ def predict_pose(rv, mean, presence):
     
     count = 0
 
+    start = datetime.datetime.now()
     while True:
 
         nb_pts = nb_pts*(1+count)-count
@@ -413,8 +416,6 @@ def predict_pose(rv, mean, presence):
         xyz[:,:,:,1] = yy
         xyz[:,:,:,2] = zz
 
-        # Getting joint probabilities
-        start = datetime.datetime.now()
 
         if presence[0] > 0:
             p1 = rv[0].pdf(xyz)
@@ -436,8 +437,6 @@ def predict_pose(rv, mean, presence):
         p = np.cbrt(p1*p2*p3)
 
 
-        stop = datetime.datetime.now()
-        elapsed = stop - start
 
         # Indices of Max Probability
         imp = np.unravel_index(np.argmax(p, axis=None), p.shape) 
@@ -450,9 +449,12 @@ def predict_pose(rv, mean, presence):
         count+= 1     
         diff = 2*diff/(nb_pts-3) # 5cm
         if count > 1:
-            # print("Joint probabilities obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
             # print("Prediction: ({:.3f}, {:.3f}, {:.3f})".format(x[imp[0]], y[imp[1]], z[imp[2]]))
             break
+
+    stop = datetime.datetime.now()
+    elapsed = stop - start
+    # print("Joint probabilities obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
 
     prediction = np.array([x_0, y_0, z_0])
     
@@ -487,6 +489,8 @@ def use_dvs(queue, ip_address, port_nb):
 
         counter = 0
         while(True):
+
+            start = datetime.datetime.now()
             counter += 1
             while not queue.empty():
                 datum = queue.get()
@@ -518,7 +522,6 @@ def use_dvs(queue, ip_address, port_nb):
             new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
 
               
-            print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
             if np.sum(presence) >= 2:
                 # Do predictions
                 prediction = predict_pose(rv, new_μ, presence)
@@ -526,6 +529,9 @@ def use_dvs(queue, ip_address, port_nb):
                 # print("P : [{:.3f}, {:.3f}, {:.3f}] vs C : [{:.3f}, {:.3f}, {:.3f}] ".format(prediction[0], prediction[1], prediction[2], mu_conflation[0], mu_conflation[1], mu_conflation[2]))
            
 
+            stop = datetime.datetime.now()
+            elapsed = stop - start
+            print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
@@ -636,6 +642,8 @@ def use_xyz(queue, ip_address, port_nb):
 
         counter = 0
         while(True):
+
+            start = datetime.datetime.now()
             counter += 1
             while not queue.empty():
                 datum = queue.get()
@@ -666,13 +674,16 @@ def use_xyz(queue, ip_address, port_nb):
             new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
 
               
-            print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
             if np.sum(presence) >= 2:
                 # Do predictions
                 prediction = predict_pose(rv, new_μ, presence)
                 # mu_conflation = conflate1D(new_μ[0:3,:], w_Σ, presence)
                 # print("P : [{:.3f}, {:.3f}, {:.3f}] vs C : [{:.3f}, {:.3f}, {:.3f}] ".format(prediction[0], prediction[1], prediction[2], mu_conflation[0], mu_conflation[1], mu_conflation[2]))
 
+
+            stop = datetime.datetime.now()
+            elapsed = stop - start
+            print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
