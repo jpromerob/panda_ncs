@@ -46,10 +46,10 @@ def set_focal_lengths():
 
     focl[0,0] = 649.229848
     focl[0,1] = 712.990500
-    focl[0,2] = 810.749526
+    focl[0,2] = 780.709664
     focl[1,0] = 647.408499
     focl[1,1] = 712.531562
-    focl[1,2] = 804.994749
+    focl[1,2] = 778.849697
 
     return focl
 
@@ -377,12 +377,13 @@ def create_mgd(v2r, v_obj_poses):
     rv_2 = multivariate_normal(new_μ[0:3,1], w_Σ[:,:,1])
     rv_3 = multivariate_normal(new_μ[0:3,2], w_Σ[:,:,2])
     
-    return new_μ, [rv_1, rv_2, rv_3]
+    return new_μ, w_Σ, [rv_1, rv_2, rv_3]
+
 
 def predict_pose(rv, mean, presence):
     
         
-    nb_pts = 9
+    nb_pts = 11
     diff = 0.5 # 50[cm]
 
 
@@ -448,7 +449,7 @@ def predict_pose(rv, mean, presence):
         
         count+= 1     
         diff = 2*diff/(nb_pts-3) # 5cm
-        if count > 2:
+        if count > 1:
             # print("Joint probabilities obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
             # print("Prediction: ({:.3f}, {:.3f}, {:.3f})".format(x[imp[0]], y[imp[1]], z[imp[2]]))
             break
@@ -514,13 +515,15 @@ def use_dvs(queue, ip_address, port_nb):
             # print("vir_z_123 = ({:.3f}, {:.3f}, {:.3f})".format(np.round(v_obj_poses[2,0],3), np.round(v_obj_poses[2,1],3), np.round(v_obj_poses[2,2],3)))
     
             
-            new_μ, rv = create_mgd(v2r, v_obj_poses)
+            new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
 
               
             print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
             if np.sum(presence) >= 2:
                 # Do predictions
                 prediction = predict_pose(rv, new_μ, presence)
+                # mu_conflation = conflate3D(new_μ[0:3,:], w_Σ, presence)
+                # print("P : [{:.3f}, {:.3f}, {:.3f}] vs C : [{:.3f}, {:.3f}, {:.3f}] ".format(prediction[0], prediction[1], prediction[2], mu_conflation[0], mu_conflation[1], mu_conflation[2]))
            
 
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
@@ -538,6 +541,73 @@ def use_dvs(queue, ip_address, port_nb):
     
     return 0
 
+def conflate1D(μ, Σ, presence):
+    
+
+    mu = np.zeros(3)
+    sigma_conflation = np.zeros(3)
+    sigma = np.zeros(4)
+
+    for k in range(3): # for x, y, z
+        if presence[0] == 1:
+            mu_1 = μ[k,0]
+            s_1 = Σ[k,k,0]**2
+        else:
+            mu_1 = np.zeros(3)
+            s_1 = np.identity(3)
+
+        if presence[1] == 1:
+            mu_2 = μ[k,1]
+            s_2 = Σ[k,k,1]**2
+        else:
+            mu_2 = np.zeros(3)
+            s_2 = np.identity(3)
+
+        if presence[2] == 1:
+            mu_3 = μ[k,2]
+            s_3 = Σ[k,k,2]**2
+        else:
+            mu_3 = np.zeros(3)
+            s_3 = np.identity(3) 
+    
+        mu[k] = (s_1*s_2*mu_3 + s_2*s_3*mu_1 + s_3*s_1*mu_2)/(s_3*s_2 + s_2*s_1 + s_1*s_3)
+    
+    return mu
+
+def conflate3D(μ, Σ, presence):
+    
+    if presence[0] == 1:
+        mu_1 = μ[:,0]
+        s_1 = Σ[:,:,0]
+    else:
+        mu_1 = np.zeros(3)
+        s_1 = np.identity(3)
+
+    if presence[1] == 1:
+        mu_2 = μ[:,1]
+        s_2 = Σ[:,:,1]
+    else:
+        mu_2 = np.zeros(3)
+        s_2 = np.identity(3)
+
+    if presence[2] == 1:
+        mu_3 = μ[:,2]
+        s_3 = Σ[:,:,2]
+    else:
+        mu_3 = np.zeros(3)
+        s_3 = np.identity(3)
+        
+
+    num = ((s_1 * s_2) @ mu_3 ) + ((s_2 * s_3) @ mu_1) + ((s_1 * s_3) @ mu_2)
+    den = (s_2 * s_3) + (s_1 * s_2) + (s_1* s_3)
+
+
+    n_d = np.linalg.inv(den) @ num
+
+    mu_conflation = n_d
+
+    return mu_conflation
+    
 
 def use_xyz(queue, ip_address, port_nb):
 
@@ -593,13 +663,15 @@ def use_xyz(queue, ip_address, port_nb):
             # print("vir_z_123 = ({:.3f}, {:.3f}, {:.3f})".format(np.round(v_obj_poses[2,0],3), np.round(v_obj_poses[2,1],3), np.round(v_obj_poses[2,2],3)))
     
             
-            new_μ, rv = create_mgd(v2r, v_obj_poses)
+            new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
 
               
             print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
             if np.sum(presence) >= 2:
                 # Do predictions
                 prediction = predict_pose(rv, new_μ, presence)
+                # mu_conflation = conflate1D(new_μ[0:3,:], w_Σ, presence)
+                # print("P : [{:.3f}, {:.3f}, {:.3f}] vs C : [{:.3f}, {:.3f}, {:.3f}] ".format(prediction[0], prediction[1], prediction[2], mu_conflation[0], mu_conflation[1], mu_conflation[2]))
 
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
