@@ -489,10 +489,10 @@ def use_dvs(queue, ip_address, port_nb):
         print("Connected to {:s}".format(repr(server_addr)))
 
         counter = 0
+        max_counter = 5000
+        elapsed = np.zeros(max_counter)
         while(True):
 
-            start = datetime.datetime.now()
-            counter += 1
             while not queue.empty():
                 datum = queue.get()
                 cam_id = datum[0]
@@ -504,37 +504,35 @@ def use_dvs(queue, ip_address, port_nb):
                 px = datum[1]*320
                 py = datum[2]*240
                 r_obj_angles[:, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id) 
+                
             # print("r_obj_angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(r_obj_angles[0,0], r_obj_angles[1,0], r_obj_angles[0,1], r_obj_angles[1,1], r_obj_angles[0,2], r_obj_angles[1,2]))
+
+            start = datetime.datetime.now()
 
             # Estimate virtual camera poses (in real camera space)
             v_poses = set_vir_poses(r_obj_angles)
             
             # Get Rotation Matrices: virtual-cam to real-cam 
             v2r = get_rotmats(v_poses)
-
-            # @ THIS IS NOT NECESSARY BUT GOOD FOR TESTING
-            # Estimate object poses (in virtual camera space)
-            # for k in range(3):
-            #     v_obj_poses[:,k] = get_b_pose_from_a_pose(v2r[:,:,k], np.identity(4), r_obj_poses[:,k])
-            #     v_obj_angles[0:2, k] = get_angles_from_pos(v_obj_poses[:,k])
-            #     # @TODO: The angles here should be exactly ZERO !!! WTF?!?!?
-            #     # print(np.round(v_poses[:,k],3))        
-            #     # print(v_angles[0:2, k])
-            # print("vir_z_123 = ({:.3f}, {:.3f}, {:.3f})".format(np.round(v_obj_poses[2,0],3), np.round(v_obj_poses[2,1],3), np.round(v_obj_poses[2,2],3)))
-    
             
             new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
 
               
             if np.sum(presence) >= 2:
                 # Do predictions
-                prediction = analytical(new_μ, w_Σ, presence)
+                prediction = analytical(new_μ, w_Σ, presence, prediction)
                 # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
            
 
             stop = datetime.datetime.now()
-            elapsed = stop - start
-            # print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
+            diff = stop - start
+            elapsed[counter] = int(diff.microseconds)
+            if counter < max_counter-1:
+                counter += 1
+            else:
+                print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+                counter = 0
+
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
@@ -551,7 +549,7 @@ def use_dvs(queue, ip_address, port_nb):
     return 0
 
 
-def analytical(μ, Σ, presence):
+def analytical(μ, Σ, presence, old_p):
 
 
     mu = np.zeros(3)
@@ -585,6 +583,15 @@ def analytical(μ, Σ, presence):
         V_n =np.linalg.inv(V_n_p)
         mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n
 
+    max_delta = 0.01
+    for k in range(3): # for x, y, z
+        if mu[k] > old_p[k] + max_delta:
+            # print("Jump avoided (up)\n")
+            mu[k] = old_p[k] + max_delta
+        if mu[k] < old_p[k] - max_delta:
+            # print("Jump avoided (down)\n")
+            mu[k] = old_p[k] - max_delta
+
     return mu
     
 
@@ -615,9 +622,10 @@ def use_xyz(queue, ip_address, port_nb):
         print("Connected to {:s}".format(repr(server_addr)))
 
         counter = 0
+        max_counter = 5000
+        elapsed = np.zeros(max_counter)
         while(True):
 
-            start = datetime.datetime.now()
             counter += 1
             while not queue.empty():
                 datum = queue.get()
@@ -630,6 +638,9 @@ def use_xyz(queue, ip_address, port_nb):
 
                 r_obj_poses[:, cam_id-1] = [datum[1], datum[2], datum[3]]
                 r_obj_angles[:, cam_id-1] = get_angles_from_pos(r_obj_poses[:, cam_id-1])
+            
+            start = datetime.datetime.now()
+
             # print("r_obj_angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(r_obj_angles[0,0], r_obj_angles[1,0], r_obj_angles[0,1], r_obj_angles[1,1], r_obj_angles[0,2], r_obj_angles[1,2]))
 
             # Estimate virtual camera poses (in real camera space)
@@ -637,30 +648,24 @@ def use_xyz(queue, ip_address, port_nb):
             
             # Get Rotation Matrices: virtual-cam to real-cam 
             v2r = get_rotmats(v_poses)
-
-            # @ THIS IS NOT NECESSARY BUT GOOD FOR TESTING
-            # Estimate object poses (in virtual camera space)
-            # for k in range(3):
-            #     v_obj_poses[:,k] = get_b_pose_from_a_pose(v2r[:,:,k], np.identity(4), r_obj_poses[:,k])
-            #     v_obj_angles[0:2, k] = get_angles_from_pos(v_obj_poses[:,k])
-            #     # @TODO: The angles here should be exactly ZERO !!! WTF?!?!?
-            #     # print(np.round(v_poses[:,k],3))        
-            #     # print(v_angles[0:2, k])
-            # print("vir_z_123 = ({:.3f}, {:.3f}, {:.3f})".format(np.round(v_obj_poses[2,0],3), np.round(v_obj_poses[2,1],3), np.round(v_obj_poses[2,2],3)))
-    
             
             new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
 
               
             if np.sum(presence) >= 2:
                 # Do predictions
-                prediction = analytical(new_μ, w_Σ, presence)
+                prediction = analytical(new_μ, w_Σ, presence, prediction)
                 # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
 
 
             stop = datetime.datetime.now()
-            elapsed = stop - start
-            # print("Consolidated value obtained after: " + str(int(elapsed.microseconds/1000)) + " [ms].")
+            diff = stop - start
+            elapsed[counter] = int(diff.microseconds)
+            if counter < max_counter-1:
+                counter += 1
+            else:
+                print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+                counter = 0
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
@@ -731,7 +736,7 @@ if __name__ == "__main__":
     if d_source == "snn" : 
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.75])
-        Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,2]])    
+        Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3.6]])    
         show = multiprocessing.Process(target=use_dvs, args=(queue, ip_address, port_nb))
     if d_source == "opt" :
         # Mean array and covariance matrix in virtual camera space
