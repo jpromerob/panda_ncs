@@ -656,6 +656,11 @@ void move_end_effector(char* robot_ip) {
     franka::Model model = robot.loadModel();
 
     franka::RobotState first_state = robot.readOnce();
+
+
+    printf("q3: %f\n", first_state.q_d[3]);
+    printf("q6: %f\n", first_state.q_d[6]);
+    
     franka::RobotState initial_state = first_state;
 
 
@@ -685,8 +690,9 @@ void move_end_effector(char* robot_ip) {
       initial_state.O_T_EE[12] = c_target.x;
       initial_state.O_T_EE[13] = c_target.y;
       initial_state.O_T_EE[14] = c_target.z;
-      initial_state.q_d[5] = first_state.q_d[5]; 
-      initial_state.q_d[6] = first_state.q_d[6]; 
+      initial_state.q_d[3] = -2.699157; // first_state.q_d[3]; 
+      // initial_state.q_d[5] = first_state.q_d[5]; 
+      initial_state.q_d[6] = 0.864497; //first_state.q_d[6]; 
 
 
       // equilibrium point is the initial position
