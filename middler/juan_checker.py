@@ -48,6 +48,38 @@ def set_focal_lengths():
 
     return focl
 
+def get_angles_from_opt(x, y, z):
+    angles = np.zeros(2)
+    angles[0] = (180/math.pi)*math.atan2(x,z) + 180 # delta_x/delta_z
+    angles[1] = (180/math.pi)*math.atan2(y,z) + 180 # delta_y/delta_z
+
+    if(angles[0]>180):
+        angles[0] = 360-angles[0]
+    if(angles[1]>180):
+        angles[1] = 360-angles[1]
+    if(angles[0]<-180):
+        angles[0] = 360+angles[0]
+    if(angles[1]<-180):
+        angles[1] = 360+angles[1]
+
+    if(x < 0):
+        angles[0] = -angles[0]
+    if(y < 0):
+        angles[1] = -angles[1]
+
+    return angles
+
+
+def get_dvs_from_angles(angles, focl, cam_id):
+
+    pixels = np.zeros(2)
+    
+    pixels[0] = math.tan((angles[0]*math.pi/180))*focl[0,cam_id-1]
+    pixels[1] = math.tan((angles[1]*math.pi/180))*focl[1,cam_id-1]
+
+    return pixels
+
+
 def udpserver(queue, cam_id):
 
     global c2w
@@ -83,41 +115,6 @@ def udpserver(queue, cam_id):
     finally:
         print("Closing socket")
         ssock.close()
-
-
-
-
-
-def get_angles_from_opt(x, y, z):
-    angles = np.zeros(2)
-    angles[0] = (180/math.pi)*math.atan2(x,z) + 180 # delta_x/delta_z
-    angles[1] = (180/math.pi)*math.atan2(y,z) + 180 # delta_y/delta_z
-
-    if(angles[0]>180):
-        angles[0] = 360-angles[0]
-    if(angles[1]>180):
-        angles[1] = 360-angles[1]
-    if(angles[0]<-180):
-        angles[0] = 360+angles[0]
-    if(angles[1]<-180):
-        angles[1] = 360+angles[1]
-
-    if(x < 0):
-        angles[0] = -angles[0]
-    if(y < 0):
-        angles[1] = -angles[1]
-
-    return angles
-
-
-def get_dvs_from_angles(angles, focl, cam_id):
-
-    pixels = np.zeros(2)
-    
-    pixels[0] = math.tan((angles[0]*math.pi/180))*focl[0,cam_id-1]
-    pixels[1] = math.tan((angles[1]*math.pi/180))*focl[1,cam_id-1]
-
-    return pixels
 
 def use_dvs(queue,LED_queue):
 
