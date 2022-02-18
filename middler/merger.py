@@ -12,22 +12,29 @@ import random
 from ctypes import *
 import numpy as np
 import multiprocessing 
-
-import os
-import math
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+from scipy import stats
+from scipy.stats import multivariate_normal
+from scipy import stats
 import time
+import math
+import datetime
+import os
 import random
 
-from coremerge import get_transmats
-from visuals import plot_gaussians, visualize_3d
-from snn import produce_snn_stats
-from utils import data2text, generate_pdfs
 
-global cam_poses, c2w, focl
+global cam_poses, r2w, r_rtl, focl
 
 
 """ This class defines a C-like struct """
-class Payload(Structure):
+class PayloadSleipner(Structure):
+    _fields_ = [("x", c_float),
+                ("y", c_float),
+                ("z", c_float),
+                ("p", c_float)]
+
+class PayloadMunin(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
                 ("z", c_float)]
@@ -36,13 +43,12 @@ def set_focal_lengths():
 
     focl = np.zeros((2,3))
 
-
     focl[0,0] = 649.229848
     focl[0,1] = 712.990500
-    focl[0,2] = 810.749526
+    focl[0,2] = 780.709664
     focl[1,0] = 647.408499
     focl[1,1] = 712.531562
-    focl[1,2] = 804.994749
+    focl[1,2] = 778.849697
 
     return focl
 
@@ -111,177 +117,55 @@ def set_cam_poses():
 
     return cam_poses
 
-
-'''
-This function returns the matrix 'c2w' that converts coordinates in camera space to coordinates in world space.
-'''
+''' Translation Matrices'''
 def get_transmats(cam_poses):
     
-    c2w = np.zeros((4,4,3))
+    mat_tran = np.zeros((4,4,3))
     for i in range(3): # Cam 1, 2, 3
         
         cx = cam_poses[i,0]
         cy = cam_poses[i,1]
         cz = cam_poses[i,2]
+
+        # Transformation matrices (translation + rotations around x, y, z)
+        mat_tran[:,:,i] = np.array([[1,0,0,cx],
+                             [0,1,0,cy],
+                             [0,0,1,cz],
+                             [0,0,0,1]])
+        
+    return mat_tran
+    
+    
+    
+'''Rotation Matrices'''
+def get_rotmats(cam_poses):
+    
+    mat_rota = np.zeros((3,3,3))
+    for i in range(3): # Cam 1, 2, 3
+        
         alpha = cam_poses[i,3]
         beta = cam_poses[i,4] 
         gamma = cam_poses[i,5]
 
-        # Transformation matrices (translation + rotations around x, y, z)
-        mat_tran = np.array([[1,0,0,cx],
-                             [0,1,0,cy],
-                             [0,0,1,cz],
-                             [0,0,0,1]])
 
-        mat_rotx = np.array([[1,0,0,0],
-                             [0,math.cos(alpha), -math.sin(alpha),0],
-                             [0, math.sin(alpha), math.cos(alpha),0],
-                             [0,0,0,1]])
+        mat_rotx = np.array([[1,0,0],
+                             [0,math.cos(alpha), -math.sin(alpha)],
+                             [0, math.sin(alpha), math.cos(alpha)]])
 
-        mat_roty = np.array([[math.cos(beta), 0, math.sin(beta),0],
-                             [0,1,0,0],
-                             [-math.sin(beta), 0, math.cos(beta),0],
-                             [0,0,0,1]])
+        mat_roty = np.array([[math.cos(beta), 0, math.sin(beta)],
+                             [0,1,0],
+                             [-math.sin(beta), 0, math.cos(beta)]])
 
 
-        mat_rotz = np.array([[math.cos(gamma), -math.sin(gamma), 0, 0],
-                             [math.sin(gamma), math.cos(gamma),0, 0],
-                             [0,0,1,0],
-                             [0,0,0,1]])
+        mat_rotz = np.array([[math.cos(gamma), -math.sin(gamma), 0],
+                             [math.sin(gamma), math.cos(gamma),0],
+                             [0,0,1]])
 
-        # General transformation matrix 'camera to world' (c2w)
-        c2w[:,:,i] = mat_tran.dot(mat_rotz).dot(mat_roty).dot(mat_rotx)
+        # General rotation matrix
+        mat_rota[:,:,i] = mat_rotz.dot(mat_roty).dot(mat_rotx)
     
     
-    return c2w
-
-
-
-def udpserver(queue, cam_id):
-
-    global c2w
-
-    port_nb = 3000 + cam_id%3 # cam #1 --> 3001 | cam #2 --> 3002 | cam #3 --> 3000
-    server_addr = ('172.16.222.31', port_nb)
-    ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print("Socket created")
-
-    try:
-        # bind the server socket and listen
-        ssock.bind(server_addr)
-        ssock.listen(3)
-        print("Listening on port {:d}".format(port_nb))
-
-        while True:
-            csock, client_address = ssock.accept()
-
-            buff = csock.recv(512)
-            while buff:
-                payload_in = Payload.from_buffer_copy(buff)             
-                presence = 1
-                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, presence])
-                
-                buff = csock.recv(512)
-            csock.close()
-
-    except AttributeError as ae:
-        print("Error creating the socket: {}".format(ae))
-    except socket.error as se:
-        print("Exception on socket: {}".format(se))
-    except KeyboardInterrupt:
-        ssock.close()
-    finally:
-        print("Closing socket")
-        ssock.close()
-
-
-
-
-def conflate(mu, sigma, presence):
-    
-    if presence[0] == 1:
-        mu_1 = mu[0]
-        ss_1 = sigma[0]**2
-    else:
-        mu_1 = 0
-        ss_1 = 1
-
-    if presence[1] == 1:
-        mu_2 = mu[1]
-        ss_2 = sigma[1]**2
-    else:
-        mu_2 = 0
-        ss_2 = 1
-
-    if presence[2] == 1:
-        mu_3 = mu[2]        
-        ss_3 = sigma[2]**2
-    else:
-        mu_3 = 0
-        ss_3 = 1    
-    
-    mu_conflation = (ss_1*ss_2*mu_3 + ss_2*ss_3*mu_1 + ss_3*ss_1*mu_2)/(ss_3*ss_2 + ss_2*ss_1 + ss_1*ss_3)
-    sigma_conflation = math.sqrt((ss_1 * ss_2 * ss_3)/(ss_1*ss_2 + ss_2*ss_3 + ss_3*ss_1))
-    
-    
-    return mu_conflation, sigma_conflation
-
-def get_gaussian(perspective, cam_pdf_params, a2b, b2c, presence):
-    
-    mu_a = np.zeros((3,4))
-    sigma_a = np.zeros((3,4))
-    mu_b = np.zeros((3,4))
-    sigma_b = np.zeros((3,4))
-    mu_c = np.zeros((3,4))
-    sigma_c = np.zeros((3,4))
-        
-    # The gaussians in space 'a' are centered around the values given in space 'a'
-    for j in range(3): # x, y, z
-        for i in range(3): # Cam 1, 2, 3
-            mu_a[j,i] = perspective[j,i] + cam_pdf_params[i,j,0]
-            sigma_a[j,i] = cam_pdf_params[i,j,1]    
-
-    # The gaussians are transformed to space 'b' (from space 'a') and their product is calculated (once per axis)
-    for j in range(3): # x, y, z
-        for i in range(3): # Cam 1, 2, 3
-            mu_b[j, i] = a2b[j,0,i]*mu_a[0,i] + a2b[j,1,i]*mu_a[1,i] + a2b[j,2,i]*mu_a[2,i] + a2b[j,3,i]
-            sigma_b[j, i] = math.sqrt((a2b[j,0,i]*sigma_a[0,i])**2 +(a2b[j,1,i]*sigma_a[1,i])**2 + (a2b[j,2,i]*sigma_a[2,i])**2)
-
-    # The gaussians are transformed to space 'c' (from space 'b') and their product is calculated (once per axis)
-    for j in range(3): # x, y, z
-        for i in range(3): # Cam 1, 2, 3
-            mu_c[j, i] = b2c[j,0,i]*mu_b[0,i] + b2c[j,1,i]*mu_b[1,i] + b2c[j,2,i]*mu_b[2,i] + b2c[j,3,i]
-            sigma_c[j, i] = math.sqrt((b2c[j,0,i]*sigma_b[0,i])**2 +(b2c[j,1,i]*sigma_b[1,i])**2 + (b2c[j,2,i]*sigma_b[2,i])**2)
-
-
-    # while True:
-    #     presence = np.random.randint(0, 2, 3, dtype=int)
-    #     if np.sum(presence) >= 2:
-    #         break
-    # presence = [1,1,1]
-
-    for j in range(3): # x, y, z
-        mu_c[j, 3], sigma_c[j, 3] = conflate(mu_c[j, 0:3], sigma_c[j, 0:3], presence)
-
-    return mu_c, sigma_c
-
-def merge_stuff(xyz_9, v2c, e_per, presence):
-
-    global cam_poses, c2w 
-    cam_pdf_params = produce_snn_stats(e_per)
-
-    start = time.time()
-    mu_w, sigma_w = get_gaussian(xyz_9, cam_pdf_params, v2c, c2w, presence)
-    stop = time.time()
-    elapsed = stop - start
-
-
-    xyz_3 = [mu_w[0,3], mu_w[1,3], mu_w[2,3]]
-
-    # print("xyz_9: ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f}) | ({:.3f}, {:.3f}, {:.3f})".format(xyz_9[0,0], xyz_9[1,0], xyz_9[2,0], xyz_9[0,1], xyz_9[1,1], xyz_9[2,1], xyz_9[0,2], xyz_9[1,2], xyz_9[2,2]))
-    # print(" ---> xyz_3: ({:.3f}, {:.3f}, {:.3f}) ".format(xyz_3[0], xyz_3[1], xyz_3[2]))
-
-    return xyz_3
+    return mat_rota
 
 
 '''
@@ -299,10 +183,12 @@ def get_angles_from_dvs(px, py, focl, cam_id):
 '''
 This functions determines the angular 'distance' between camera and object in planez XZ and YZ
 '''
-def get_angles_from_opt(x, y, z):
+def get_angles_from_pos(obj_pose):
+    
     angles = np.zeros(2)
-    angles[0] = (180/math.pi)*math.atan2(x,z) + 180 # delta_x/delta_z
-    angles[1] = (180/math.pi)*math.atan2(y,z) + 180 # delta_y/delta_z
+    
+    angles[0] = (180/math.pi)*math.atan2((obj_pose[0]),(obj_pose[2])) + 180 # delta_x/delta_z
+    angles[1] = (180/math.pi)*math.atan2((obj_pose[1]),(obj_pose[2])) + 180 # delta_y/delta_z
 
     if(angles[0]>180):
         angles[0] = 360-angles[0]
@@ -313,94 +199,160 @@ def get_angles_from_opt(x, y, z):
     if(angles[1]<-180):
         angles[1] = 360+angles[1]
 
-    if(x < 0):
+    if(obj_pose[0] < 0):
         angles[0] = -angles[0]
-    if(y < 0):
+    if(obj_pose[1] < 0):
         angles[1] = -angles[1]
 
     return angles
 
 
+''' Create Multivariate Gaussian Distributions'''
+def create_mgd(v2r, v_obj_poses):   
 
-def use_dvs(queue, ip_address, port_nb, e_per, fixed_z):
+    global r2w, r_rtl, μ, Σ
+
+    r_μ = np.zeros((3,3))
+    r_Σ = np.zeros((3,3,3))
+    w_μ = np.zeros((3,3))
+    w_Σ = np.zeros((3,3,3))
+    new_μ = np.zeros((4,3)) # including a '1' at the end
+    for k in range(3):
+        
+        # @TODO: only for testing purposes
+#         μ[2] = v_obj_poses[2,k]
+                                      
+        # Rotating Means from virtual-cam space to real-cam space  
+        r_μ[:,k] = v2r[:,:,k] @ μ
+                 
+        # Rotating Means from real-cam space to world space 
+        w_μ[:,k] = r2w[:,:,k] @ r_μ[:,k]
+    
+        # Translating Means from Camera (Real=Virtual) space to World space 
+        new_μ[:,k] = r_trl[:,:, k] @ [w_μ[0,k], w_μ[1,k], w_μ[2,k],1]                     
+                 
+        # Rotating Covariance Matrix from virtual-cam space to real-cam space  
+        r_Σ[:,:,k] = v2r[:,:,k] @ Σ @ v2r[:,:,k].T  
+                 
+        # Rotating Covariance Matrix from real-cam space to world space  
+        w_Σ[:,:,k] = r2w[:,:,k] @ r_Σ[:,:,k] @ r2w[:,:,k].T 
+    
+    rv_1 = multivariate_normal(new_μ[0:3,0], w_Σ[:,:,0])
+    rv_2 = multivariate_normal(new_μ[0:3,1], w_Σ[:,:,1])
+    rv_3 = multivariate_normal(new_μ[0:3,2], w_Σ[:,:,2])
+    
+    return new_μ, w_Σ, [rv_1, rv_2, rv_3]
+
+def analytical(μ, Σ, presence, old_p):
+
+
+    mu = np.zeros(3)
+    V_n_p = np.zeros((3,3)) 
+    
+    if presence[0] == 1:
+        V_1 = np.linalg.inv(Σ[:,:,0])
+        V_n_p += V_1
+        μ_1 = μ[0:3,0]
+    else:
+        V_1 = np.zeros((3,3)) 
+        μ_1 = np.zeros(3)
+
+    if presence[1] == 1:
+        V_2 = np.linalg.inv(Σ[:,:,1])
+        V_n_p += V_2
+        μ_2 = μ[0:3,1]
+    else:
+        V_2 = np.zeros((3,3)) 
+        μ_2 = np.zeros(3)
+
+    if presence[2] == 1:
+        V_3 = np.linalg.inv(Σ[:,:,2])
+        V_n_p += V_3
+        μ_3 = μ[0:3,2]
+    else:
+        V_3 = np.zeros((3,3)) 
+        μ_3 = np.zeros(3)
+
+    if np.sum(presence)>=2:
+        V_n =np.linalg.inv(V_n_p)
+        mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n
+
+    max_delta = 0.01
+    for k in range(3): # for x, y, z
+        if mu[k] > old_p[k] + max_delta:
+            # print("Jump avoided (up)\n")
+            mu[k] = old_p[k] + max_delta
+        if mu[k] < old_p[k] - max_delta:
+            # print("Jump avoided (down)\n")
+            mu[k] = old_p[k] - max_delta
+
+    return mu
+
+##############################################################################################################################
+#                                                         UDP SERVER                                                         #
+##############################################################################################################################
+
+def udpserver(queue, cam_id):
+
+
+    port_nb = 3000 + cam_id%3 # cam #1 --> 3001 | cam #2 --> 3002 | cam #3 --> 3000
+    server_addr = ('172.16.222.31', port_nb)
+    ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    print("Socket created")
+
+    try:
+        # bind the server socket and listen
+        ssock.bind(server_addr)
+        ssock.listen(3)
+        print("Listening on port {:d}".format(port_nb))
+
+        while True:
+            csock, client_address = ssock.accept()
+
+            buff = csock.recv(512)
+            while buff:
+                payload_in = PayloadSleipner.from_buffer_copy(buff)       
+                presence = np.random.randint(2)
+                queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
+                
+                buff = csock.recv(512)
+            csock.close()
+
+    except AttributeError as ae:
+        print("Error creating the socket: {}".format(ae))
+    except socket.error as se:
+        print("Exception on socket: {}".format(se))
+    except KeyboardInterrupt:
+        ssock.close()
+    finally:
+        print("Closing socket")
+        ssock.close()
+
+
+##############################################################################################################################
+#                                                           USE DVS                                                          #
+##############################################################################################################################
+
+def use_dvs(queue, ip_address, port_nb):
 
     global focl
 
-    angles = np.zeros((2,3))
-    xyz_9 = np.zeros((3,3))
+    r_obj_poses = np.zeros((3,3))       
+    r_obj_angles = np.zeros((2,3))   
+    v_obj_poses = np.zeros((3,3))  
+    v_obj_angles = np.zeros((2,3))   
+
+    r_μ = np.zeros((3,3))
+    r_Σ = np.zeros((3,3,3))
+    w_μ = np.zeros((3,3))
+    w_Σ = np.zeros((3,3,3))
+
+    new_μ = np.zeros((4,3)) # including a '1' at the end
+
+
+    oldsence = np.ones(3)
     presence = np.ones(3)
-
-
-    server_addr = (ip_address, port_nb)
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    try:
-        s.connect(server_addr)
-        print("Connected to {:s}".format(repr(server_addr)))
-
-        counter = 0
-        while(True):
-            counter += 1
-            datum = queue.get()
-            cam_id = datum[0]
-
-            px = datum[1]*320
-            py = datum[2]*240
-
-            presence[cam_id-1] = datum[4]
-
-            angles[0:2, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id)            
-
-            # # This should be removed when Jens sends 'presence' from sleipner
-            # if abs(angles[0, cam_id-1])>20 or abs(angles[1, cam_id-1])>20:
-            #     presence[cam_id-1] = 0                
-            #     print("Outside Cam#{:.0f}'s FOV".format(cam_id))
-
-            # poses of the virtual cameras based on angles calculated from pixel positions
-            vir_poses = set_vir_poses(angles)
-
-            # transformation matrices
-            v2c = get_transmats(vir_poses)
-                
-            xyz_9[0,cam_id-1] = 0 # x (in camera space)
-            xyz_9[1,cam_id-1] = 0 # y (in camera space)
-            xyz_9[2,cam_id-1] = fixed_z # z (in camera space)
-
-            
-            xyz_3 = merge_stuff(xyz_9, v2c, e_per, presence)
-
-            payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
-            nsent = s.send(payload_out)
-
-    except AttributeError as ae:
-        print("Error creating the socket: {}".format(ae))
-    except socket.error as se:
-        print("Exception on socket: {}".format(se))
-    finally:
-        print("Closing socket")
-        s.close()
-    
-    return 0
-
-
-'''
-This function defines object pose from camera perspective
-'''
-def define_object_pose(a2b, ground_truth):
-    
-
-    perspective = np.zeros((4,1)) # coordinates|cameras
-    # Checking output of each camera
-    b2a = np.linalg.inv(a2b)
-    perspective = b2a.dot(ground_truth)
-
-    return perspective
-
-def use_xyz(queue, ip_address, port_nb, e_per, fixed_z):
-
-    angles = np.zeros((2,3))
-    xyz_9 = np.zeros((3,3))
-    presence = np.ones(3)
+    prediction = np.ones(3)
     
     server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -410,41 +362,51 @@ def use_xyz(queue, ip_address, port_nb, e_per, fixed_z):
         print("Connected to {:s}".format(repr(server_addr)))
 
         counter = 0
+        max_counter = 5000
+        elapsed = np.zeros(max_counter)
         while(True):
-            counter += 1
-            datum = queue.get()
-            cam_id = datum[0]
 
-            x = np.array(datum[1])
-            y = np.array(datum[2])
-            z = np.array(datum[3])
+            while not queue.empty():
+                datum = queue.get()
+                cam_id = datum[0]
+                presence[cam_id-1] = datum[4]
+                if oldsence[cam_id-1] != presence[cam_id-1]:
+                    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+                    oldsence[cam_id-1] = presence[cam_id-1]
 
-            presence[cam_id-1] = datum[4]
-
-            angles[0:2, cam_id-1] = get_angles_from_opt(x, y, z)
-            # print("angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(angles[0,0], angles[1,0], angles[0,1], angles[1,1], angles[0,2], angles[1,2]))
-
-            # # This should be removed when Jens sends 'presence' from sleipner
-            # if abs(angles[0, cam_id-1])>20 or abs(angles[1, cam_id-1])>20:
-            #     presence[cam_id-1] = 0                
-            #     print("Outside Cam#{:.0f}'s FOV".format(cam_id))
-
-            # poses of the virtual cameras based on angles calculated from pixel positions
-            vir_poses = set_vir_poses(angles)
-
-            # transformation matrices
-            v2c = get_transmats(vir_poses)
-            
-            # Get virtual pose
-            vp = define_object_pose(v2c[:,:,cam_id-1], np.array([x, y, z, 1]))
+                px = datum[1]*320
+                py = datum[2]*240
+                r_obj_angles[:, cam_id-1] = get_angles_from_dvs(px, py, focl, cam_id) 
                 
-            xyz_9[0,cam_id-1] = 0 # x (in camera space)
-            xyz_9[1,cam_id-1] = 0 # y (in camera space)
-            xyz_9[2,cam_id-1] = fixed_z # z (in camera space)
+            # print("r_obj_angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(r_obj_angles[0,0], r_obj_angles[1,0], r_obj_angles[0,1], r_obj_angles[1,1], r_obj_angles[0,2], r_obj_angles[1,2]))
 
-            xyz_3 = merge_stuff(xyz_9, v2c, e_per, presence)
+            start = datetime.datetime.now()
 
-            payload_out = Payload(xyz_3[0], xyz_3[1], xyz_3[2])
+            # Estimate virtual camera poses (in real camera space)
+            v_poses = set_vir_poses(r_obj_angles)
+            
+            # Get Rotation Matrices: virtual-cam to real-cam 
+            v2r = get_rotmats(v_poses)
+            
+            new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
+
+              
+            if np.sum(presence) >= 2:
+                # Do predictions
+                prediction = analytical(new_μ, w_Σ, presence, prediction)
+                # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
+           
+
+            stop = datetime.datetime.now()
+            diff = stop - start
+            elapsed[counter] = int(diff.microseconds)
+            if counter < max_counter-1:
+                counter += 1
+            else:
+                print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+                counter = 0
+
+            payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
 
     except AttributeError as ae:
@@ -458,12 +420,103 @@ def use_xyz(queue, ip_address, port_nb, e_per, fixed_z):
 
     
     return 0
+  
+##############################################################################################################################
+#                                                           USE OPT                                                          #
+##############################################################################################################################  
+
+def use_opt(queue, ip_address, port_nb):
+
+    r_obj_poses = np.zeros((3,3))       
+    r_obj_angles = np.zeros((2,3))   
+    v_obj_poses = np.zeros((3,3))  
+    v_obj_angles = np.zeros((2,3))   
+
+    r_μ = np.zeros((3,3))
+    r_Σ = np.zeros((3,3,3))
+    w_μ = np.zeros((3,3))
+    w_Σ = np.zeros((3,3,3))
+
+    new_μ = np.zeros((4,3)) # including a '1' at the end
 
 
+    oldsence = np.ones(3)
+    presence = np.ones(3)
+    prediction = np.ones(3)
+    
+    server_addr = (ip_address, port_nb)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        s.connect(server_addr)
+        print("Connected to {:s}".format(repr(server_addr)))
+
+        counter = 0
+        max_counter = 5000
+        elapsed = np.zeros(max_counter)
+        while(True):
+
+            counter += 1
+            while not queue.empty():
+                datum = queue.get()
+                cam_id = datum[0]
+                presence[cam_id-1] = datum[4]
+                if oldsence[cam_id-1] != presence[cam_id-1]:
+                    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+                    oldsence[cam_id-1] = presence[cam_id-1]
+                
+
+                r_obj_poses[:, cam_id-1] = [datum[1], datum[2], datum[3]]
+                r_obj_angles[:, cam_id-1] = get_angles_from_pos(r_obj_poses[:, cam_id-1])
+            
+            start = datetime.datetime.now()
+
+            # print("r_obj_angles [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] [{:.3f}, {:.3f}] ".format(r_obj_angles[0,0], r_obj_angles[1,0], r_obj_angles[0,1], r_obj_angles[1,1], r_obj_angles[0,2], r_obj_angles[1,2]))
+
+            # Estimate virtual camera poses (in real camera space)
+            v_poses = set_vir_poses(r_obj_angles)
+            
+            # Get Rotation Matrices: virtual-cam to real-cam 
+            v2r = get_rotmats(v_poses)
+            
+            new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
+
+              
+            if np.sum(presence) >= 2:
+                # Do predictions
+                prediction = analytical(new_μ, w_Σ, presence, prediction)
+                # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
+
+
+            stop = datetime.datetime.now()
+            diff = stop - start
+            elapsed[counter] = int(diff.microseconds)
+            if counter < max_counter-1:
+                counter += 1
+            else:
+                print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+                counter = 0
+            payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
+            nsent = s.send(payload_out)
+
+    except AttributeError as ae:
+        print("Error creating the socket: {}".format(ae))
+    except socket.error as se:
+        print("Exception on socket: {}".format(se))
+    finally:
+        print("Closing socket")
+        s.close()
+
+
+    
+    return 0
+
+    
+  
 
 if __name__ == "__main__":
     
-    global cam_poses, c2w, focl
+    global cam_poses, r2w, r_rtl, μ, Σ, focl
 
 
     try:
@@ -495,29 +548,30 @@ if __name__ == "__main__":
 
     focl = set_focal_lengths()
 
+    # Get camera poses
     cam_poses = set_cam_poses()
-    c2w = get_transmats(cam_poses)
+    
+    # Get Rotation Matrices: real-cam to world 
+    r2w = get_rotmats(cam_poses)
+    
+    # Get Translation Matrices: real-cam to world
+    r_trl = get_transmats(cam_poses)
+
 
     cam_1 = multiprocessing.Process(target=udpserver, args=(queue,1,))
     cam_2 = multiprocessing.Process(target=udpserver, args=(queue,2,))
     cam_3 = multiprocessing.Process(target=udpserver, args=(queue,3,))
 
-
-
-    e_per = np.array([0.001, 0.001, 0.3]) 
-
-    try:
-        fixed_z = float(sys.argv[3])
-    except:
-        fixed_z = -0.8
-    
-    print("Fixed z = {:.3f} ".format(fixed_z))
-
-
     if d_source == "snn" : 
-        show = multiprocessing.Process(target=use_dvs, args=(queue, ip_address, port_nb, e_per, fixed_z))
+        # Mean array and covariance matrix in virtual camera space
+        μ = np.array([0,0,-0.75])
+        Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3.6]])    
+        show = multiprocessing.Process(target=use_dvs, args=(queue, ip_address, port_nb))
     if d_source == "opt" :
-        show = multiprocessing.Process(target=use_xyz, args=(queue, ip_address, port_nb, e_per, fixed_z))
+        # Mean array and covariance matrix in virtual camera space
+        μ = np.array([0,0,-0.9])
+        Σ = np.array([[0.02,0,0],[0,0.02,0],[0,0,1.8]])    
+        show = multiprocessing.Process(target=use_opt, args=(queue, ip_address, port_nb))
 
     show.start()
     cam_1.start()
