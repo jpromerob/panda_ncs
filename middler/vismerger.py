@@ -54,35 +54,19 @@ def set_focal_lengths():
     return focl
 
 # Poses of virtual cameras with respect to their corresponding real camera space
-def set_vir_poses(angles):
+def set_vir_poses(angles, v_poses, presence):
    
-    vir_poses = np.zeros((3,6))
+    for k in range(3): # for cameras 1|2|3
+        # Cam k+1
+        if presence[k]==1:
+            v_poses[k,0] = 0
+            v_poses[k,1] = 0
+            v_poses[k,2] = 0
+            v_poses[k,3] = (math.pi/180)*(angles[1,k])    # around X axis -->  ang(YZ)
+            v_poses[k,4] = (math.pi/180)*(-angles[0,k])   # around Y axis --> -ang(XZ)
+            v_poses[k,5] = 0 
 
-    # Cam 1
-    vir_poses[0,0] = 0
-    vir_poses[0,1] = 0
-    vir_poses[0,2] = 0
-    vir_poses[0,3] = (math.pi/180)*(angles[1,0])    # around X axis -->  ang(YZ)
-    vir_poses[0,4] = (math.pi/180)*(-angles[0,0])   # around Y axis --> -ang(XZ)
-    vir_poses[0,5] = 0 
-
-    # Cam 2
-    vir_poses[1,0] = 0
-    vir_poses[1,1] = 0
-    vir_poses[1,2] = 0
-    vir_poses[1,3] = (math.pi/180)*(angles[1,1])    # around X axis -->  ang(YZ)
-    vir_poses[1,4] = (math.pi/180)*(-angles[0,1])   # around Y axis --> -ang(XZ)
-    vir_poses[1,5] = 0
-
-    # Cam 3
-    vir_poses[2,0] = 0
-    vir_poses[2,1] = 0
-    vir_poses[2,2] = 0
-    vir_poses[2,3] = (math.pi/180)*(angles[1,2])    # around X axis -->  ang(YZ)
-    vir_poses[2,4] = (math.pi/180)*(-angles[0,2])   # around Y axis --> -ang(XZ)
-    vir_poses[2,5] = 0 
-
-    return vir_poses
+    return v_poses
     
 
 '''
@@ -207,6 +191,7 @@ def get_angles_from_pos(obj_pose):
 
     return angles
 
+'''  '''
 def get_dvs_from_angles(angles, focl, cam_id):
 
     px = math.tan((angles[0]*math.pi/180))*focl[0,cam_id-1]
@@ -215,7 +200,7 @@ def get_dvs_from_angles(angles, focl, cam_id):
     return px, py
 
 ''' Create Multivariate Gaussian Distributions'''
-def create_mgd(v2r, v_obj_poses):   
+def create_mgd(v2r, v_obj_poses, v_Σ, presence):   
 
     global r2w, r_rtl, μ, Σ
 
@@ -224,11 +209,15 @@ def create_mgd(v2r, v_obj_poses):
     w_μ = np.zeros((3,3))
     w_Σ = np.zeros((3,3,3))
     new_μ = np.zeros((4,3)) # including a '1' at the end
+
+
+    d_Σ_up = Σ * 0.025
+    d_Σ_down = Σ * -0.050
+    Σ_min = Σ*1
+    Σ_max = Σ*3
+
     for k in range(3):
-        
-        # @TODO: only for testing purposes
-#         μ[2] = v_obj_poses[2,k]
-                                      
+                                              
         # Rotating Means from virtual-cam space to real-cam space  
         r_μ[:,k] = v2r[:,:,k] @ μ
                  
@@ -236,21 +225,69 @@ def create_mgd(v2r, v_obj_poses):
         w_μ[:,k] = r2w[:,:,k] @ r_μ[:,k]
     
         # Translating Means from Camera (Real=Virtual) space to World space 
-        new_μ[:,k] = r_trl[:,:, k] @ [w_μ[0,k], w_μ[1,k], w_μ[2,k],1]                     
+        new_μ[:,k] = r_trl[:,:, k] @ [w_μ[0,k], w_μ[1,k], w_μ[2,k],1]        
+
+        if presence[k] == 1:
+            # Camera CAN see object, cigars need to narrow down on 'x' and 'y' axes (in virtual camera space)
+            if v_Σ[0,0,k] > Σ_min[0,0]:
+                v_Σ[0,0,k] = max(v_Σ[0,0,k]+d_Σ_down[0,0], Σ_min[0,0])    
+                print("std(x|{:d}) narrows to {:.3f}".format(k+1, v_Σ[0,0,k]))
+            if v_Σ[1,1,k] > Σ_min[1,1]:
+                v_Σ[1,1,k] = max(v_Σ[1,1,k]+d_Σ_down[1,1], Σ_min[1,1])    
+                print("std(y|{:d}) narrows to {:.3f}".format(k+1, v_Σ[1,1,k]))
+        else:
+            # Camera can NOT see object, cigars need to widen in'x' and 'y' axes (in virtual camera space)
+            if v_Σ[0,0,k] < Σ_max[0,0]:
+                v_Σ[0,0,k] = min(v_Σ[0,0,k]+d_Σ_up[0,0], Σ_max[0,0])   
+                print("std(x|{:d}) widens to {:.3f}".format(k+1, v_Σ[0,0,k]))
+            if v_Σ[1,1,k] < Σ_max[1,1]:
+                v_Σ[1,1,k] = min(v_Σ[1,1,k]+d_Σ_up[1,1], Σ_max[1,1])     
+                print("std(y|{:d}) widens to {:.3f}".format(k+1, v_Σ[1,1,k]))
+
+
                  
         # Rotating Covariance Matrix from virtual-cam space to real-cam space  
-        r_Σ[:,:,k] = v2r[:,:,k] @ Σ @ v2r[:,:,k].T  
+        r_Σ[:,:,k] = v2r[:,:,k] @ v_Σ[:,:,k] @ v2r[:,:,k].T  
                  
         # Rotating Covariance Matrix from real-cam space to world space  
         w_Σ[:,:,k] = r2w[:,:,k] @ r_Σ[:,:,k] @ r2w[:,:,k].T 
     
-    rv_1 = multivariate_normal(new_μ[0:3,0], w_Σ[:,:,0])
-    rv_2 = multivariate_normal(new_μ[0:3,1], w_Σ[:,:,1])
-    rv_3 = multivariate_normal(new_μ[0:3,2], w_Σ[:,:,2])
     
-    return new_μ, w_Σ, [rv_1, rv_2, rv_3]
+    return new_μ, w_Σ, v_Σ
 
-def analytical(μ, Σ, presence, old_p):
+def analytical(μ, Σ, old_p):
+
+    mu = np.zeros(3)
+    V_n_p = np.zeros((3,3)) 
+    
+    V_1 = np.linalg.inv(Σ[:,:,0])
+    V_n_p += V_1
+    μ_1 = μ[0:3,0]
+
+    V_2 = np.linalg.inv(Σ[:,:,1])
+    V_n_p += V_2
+    μ_2 = μ[0:3,1]
+
+    V_3 = np.linalg.inv(Σ[:,:,2])
+    V_n_p += V_3
+    μ_3 = μ[0:3,2]
+
+    V_n =np.linalg.inv(V_n_p)
+    mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n
+
+    max_delta = 0.001
+    for k in range(3): # for x, y, z
+        if mu[k] > old_p[k] + max_delta:
+            # print("Jump avoided (up)\n")
+            mu[k] = old_p[k] + max_delta
+        if mu[k] < old_p[k] - max_delta:
+            # print("Jump avoided (down)\n")
+            mu[k] = old_p[k] - max_delta
+
+    return mu
+
+
+def old_good_analytical(μ, Σ, presence, old_p):
 
 
     mu = np.zeros(3)
@@ -284,7 +321,7 @@ def analytical(μ, Σ, presence, old_p):
         V_n =np.linalg.inv(V_n_p)
         mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n
 
-    max_delta = 0.01
+    max_delta = 0.001
     for k in range(3): # for x, y, z
         if mu[k] > old_p[k] + max_delta:
             # print("Jump avoided (up)\n")
@@ -342,7 +379,9 @@ def udpserver(merge_queue, cam_id):
 
 def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
 
-    global focl, vis_flag
+    global focl, Σ, vis_flag
+
+    v_poses = np.zeros((3,6))
 
     r_obj_poses = np.zeros((3,3))       
     r_obj_angles = np.zeros((2,3))   
@@ -354,6 +393,12 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
     w_μ = np.zeros((3,3))
     w_Σ = np.zeros((3,3,3))
 
+    v_Σ = np.zeros((3,3,3))
+
+    # current Σ in 'virtual camera space' for cams 1|2|3
+    for k in range(3):
+        v_Σ[:,:,k] = Σ 
+
     new_μ = np.zeros((4,3)) # including a '1' at the end
 
     px = np.zeros(3)
@@ -362,6 +407,7 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
     oldsence = np.ones(3)
     presence = np.ones(3)
     prediction = np.ones(3)
+    olddiction = np.ones(3)
     
     server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -400,18 +446,17 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
             start = datetime.datetime.now()
 
             # Estimate virtual camera poses (in real camera space)
-            v_poses = set_vir_poses(r_obj_angles)
+            v_poses = set_vir_poses(r_obj_angles, v_poses, presence)
             
             # Get Rotation Matrices: virtual-cam to real-cam 
             v2r = get_rotmats(v_poses)
             
-            new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
+            new_μ, w_Σ, v_Σ = create_mgd(v2r, v_obj_poses, v_Σ, presence)
 
               
-            if np.sum(presence) >= 2:
-                # Do predictions
-                prediction = analytical(new_μ, w_Σ, presence, prediction)
-                # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
+            # Do predictions
+            prediction = analytical(new_μ, w_Σ, prediction)
+            # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
 
 
             stop = datetime.datetime.now()
