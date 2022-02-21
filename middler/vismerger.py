@@ -337,10 +337,10 @@ def udpserver(merge_queue, cam_id):
 
 
 ##############################################################################################################################
-#                                                           USE DVS                                                          #
+#                                                          COMBINER                                                          #
 ##############################################################################################################################
 
-def use_dvs(merge_queue, visual_queue, ip_address, port_nb):
+def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
 
     global focl, vis_flag
 
@@ -356,7 +356,6 @@ def use_dvs(merge_queue, visual_queue, ip_address, port_nb):
 
     new_μ = np.zeros((4,3)) # including a '1' at the end
 
-
     px = np.zeros(3)
     py = np.zeros(3)
 
@@ -376,103 +375,6 @@ def use_dvs(merge_queue, visual_queue, ip_address, port_nb):
         elapsed = np.zeros(max_counter)
         while(True):
 
-            while not merge_queue.empty():
-                datum = merge_queue.get()
-                cam_id = datum[0]
-                presence[cam_id-1] = datum[4]
-                if oldsence[cam_id-1] != presence[cam_id-1]:
-                    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
-                    oldsence[cam_id-1] = presence[cam_id-1]
-
-                px[cam_id-1] = datum[1]*320
-                py[cam_id-1] = datum[2]*240
-                r_obj_angles[:, cam_id-1] = get_angles_from_dvs(px[cam_id-1], py[cam_id-1], focl, cam_id) 
-            
-            if vis_flag:
-                for k in range(3):
-                    visual_queue.put([k+1, px[k]+320, py[k]+240, presence[k]])
-
-            start = datetime.datetime.now()
-
-            # Estimate virtual camera poses (in real camera space)
-            v_poses = set_vir_poses(r_obj_angles)
-            
-            # Get Rotation Matrices: virtual-cam to real-cam 
-            v2r = get_rotmats(v_poses)
-            
-            new_μ, w_Σ, rv = create_mgd(v2r, v_obj_poses)
-
-              
-            if np.sum(presence) >= 2:
-                # Do predictions
-                prediction = analytical(new_μ, w_Σ, presence, prediction)
-                # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
-           
-
-            stop = datetime.datetime.now()
-            diff = stop - start
-            elapsed[counter] = int(diff.microseconds)
-            if counter < max_counter-1:
-                counter += 1
-            else:
-                print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
-                counter = 0
-
-            payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
-            nsent = s.send(payload_out)
-
-    except AttributeError as ae:
-        print("Error creating the socket: {}".format(ae))
-    except socket.error as se:
-        print("Exception on socket: {}".format(se))
-    finally:
-        print("Closing socket")
-        s.close()
-
-
-    
-    return 0
-  
-##############################################################################################################################
-#                                                           USE OPT                                                          #
-##############################################################################################################################  
-
-def use_opt(merge_queue, visual_queue, ip_address, port_nb):
-
-    global vis_flag
-
-    r_obj_poses = np.zeros((3,3))       
-    r_obj_angles = np.zeros((2,3))   
-    v_obj_poses = np.zeros((3,3))  
-    v_obj_angles = np.zeros((2,3))   
-
-    r_μ = np.zeros((3,3))
-    r_Σ = np.zeros((3,3,3))
-    w_μ = np.zeros((3,3))
-    w_Σ = np.zeros((3,3,3))
-
-    new_μ = np.zeros((4,3)) # including a '1' at the end
-
-    px = np.zeros(3)
-    py = np.zeros(3)
-
-    oldsence = np.ones(3)
-    presence = np.ones(3)
-    prediction = np.ones(3)
-    
-    server_addr = (ip_address, port_nb)
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    try:
-        s.connect(server_addr)
-        print("Connected to {:s}".format(repr(server_addr)))
-
-        counter = 0
-        max_counter = 5000
-        elapsed = np.zeros(max_counter)
-        while(True):
-
-            counter += 1
             while not merge_queue.empty():
                 datum = merge_queue.get()
                 cam_id = datum[0]
@@ -481,10 +383,14 @@ def use_opt(merge_queue, visual_queue, ip_address, port_nb):
                     print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
                     oldsence[cam_id-1] = presence[cam_id-1]
                 
-
-                r_obj_poses[:, cam_id-1] = [datum[1], datum[2], datum[3]]
-                r_obj_angles[:, cam_id-1] = get_angles_from_pos(r_obj_poses[:, cam_id-1])
-                px[cam_id-1], py[cam_id-1] = get_dvs_from_angles(r_obj_angles[:, cam_id-1], focl, cam_id)
+                if dvs_is_src:
+                    px[cam_id-1] = datum[1]*320
+                    py[cam_id-1] = datum[2]*240
+                    r_obj_angles[:, cam_id-1] = get_angles_from_dvs(px[cam_id-1], py[cam_id-1], focl, cam_id) 
+                else:
+                    r_obj_poses[:, cam_id-1] = [datum[1], datum[2], datum[3]]
+                    r_obj_angles[:, cam_id-1] = get_angles_from_pos(r_obj_poses[:, cam_id-1])
+                    px[cam_id-1], py[cam_id-1] = get_dvs_from_angles(r_obj_angles[:, cam_id-1], focl, cam_id)
             
 
             if vis_flag:
@@ -530,7 +436,6 @@ def use_opt(merge_queue, visual_queue, ip_address, port_nb):
 
     
     return 0
-
    
 ##############################################################################################################################
 #                                                          VISUALIZE                                                         #
@@ -627,10 +532,9 @@ if __name__ == "__main__":
     
     global cam_poses, r2w, r_rtl, μ, Σ, focl, vis_flag
 
-
     try:
         d_source = sys.argv[1]
-        if d_source != "snn" and d_source != "opt":
+        if d_source != "dvs" and d_source != "opt":
             print("Invalid data source")
             quit()
         else:
@@ -657,7 +561,7 @@ if __name__ == "__main__":
             vis_flag = False
 
     except:
-        print("Try python3 merger.py <snn|opt> <nuc|munin> <on|off>")
+        print("Try python3 merger.py <dvs|opt> <nuc|munin> <on|off>")
         quit()
 
 
@@ -680,16 +584,16 @@ if __name__ == "__main__":
     cam_2 = multiprocessing.Process(target=udpserver, args=(merge_queue,2,))
     cam_3 = multiprocessing.Process(target=udpserver, args=(merge_queue,3,))
 
-    if d_source == "snn" : 
+    if d_source == "dvs" : 
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.75])
         Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3.6]])    
-        show = multiprocessing.Process(target=use_dvs, args=(merge_queue, visual_queue, ip_address, port_nb,))
+        show = multiprocessing.Process(target=combiner, args=(merge_queue, visual_queue, ip_address, port_nb,True,))
     if d_source == "opt" :
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.9])
         Σ = np.array([[0.02,0,0],[0,0.02,0],[0,0,1.8]])    
-        show = multiprocessing.Process(target=use_opt, args=(merge_queue, visual_queue, ip_address, port_nb,))
+        show = multiprocessing.Process(target=combiner, args=(merge_queue, visual_queue, ip_address, port_nb,False,))
 
     if vis_flag:
         v_all = multiprocessing.Process(target=visualize, args=(visual_queue,))
