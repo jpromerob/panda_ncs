@@ -212,9 +212,9 @@ def create_mgd(v2r, v_obj_poses, v_Σ, presence):
 
 
     d_Σ_up = Σ * 0.025
-    d_Σ_down = Σ * -0.050
+    d_Σ_down = Σ * -0.025
     Σ_min = Σ*1
-    Σ_max = Σ*3
+    Σ_max = Σ*10
 
     for k in range(3):
                                               
@@ -231,18 +231,18 @@ def create_mgd(v2r, v_obj_poses, v_Σ, presence):
             # Camera CAN see object, cigars need to narrow down on 'x' and 'y' axes (in virtual camera space)
             if v_Σ[0,0,k] > Σ_min[0,0]:
                 v_Σ[0,0,k] = max(v_Σ[0,0,k]+d_Σ_down[0,0], Σ_min[0,0])    
-                print("std(x|{:d}) narrows to {:.3f}".format(k+1, v_Σ[0,0,k]))
+                # print("std(x|{:d}) narrows to {:.3f}".format(k+1, v_Σ[0,0,k]))
             if v_Σ[1,1,k] > Σ_min[1,1]:
                 v_Σ[1,1,k] = max(v_Σ[1,1,k]+d_Σ_down[1,1], Σ_min[1,1])    
-                print("std(y|{:d}) narrows to {:.3f}".format(k+1, v_Σ[1,1,k]))
+                # print("std(y|{:d}) narrows to {:.3f}".format(k+1, v_Σ[1,1,k]))
         else:
             # Camera can NOT see object, cigars need to widen in'x' and 'y' axes (in virtual camera space)
             if v_Σ[0,0,k] < Σ_max[0,0]:
                 v_Σ[0,0,k] = min(v_Σ[0,0,k]+d_Σ_up[0,0], Σ_max[0,0])   
-                print("std(x|{:d}) widens to {:.3f}".format(k+1, v_Σ[0,0,k]))
+                # print("std(x|{:d}) widens to {:.3f}".format(k+1, v_Σ[0,0,k]))
             if v_Σ[1,1,k] < Σ_max[1,1]:
                 v_Σ[1,1,k] = min(v_Σ[1,1,k]+d_Σ_up[1,1], Σ_max[1,1])     
-                print("std(y|{:d}) widens to {:.3f}".format(k+1, v_Σ[1,1,k]))
+                # print("std(y|{:d}) widens to {:.3f}".format(k+1, v_Σ[1,1,k]))
 
 
                  
@@ -426,7 +426,7 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
                 cam_id = datum[0]
                 presence[cam_id-1] = datum[4]
                 if oldsence[cam_id-1] != presence[cam_id-1]:
-                    print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
+                    # print("Presence: [{:.3f}, {:.3f}, {:.3f}] ".format(presence[0], presence[1], presence[2]))
                     oldsence[cam_id-1] = presence[cam_id-1]
                 
                 if dvs_is_src:
@@ -465,7 +465,7 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
             if counter < max_counter-1:
                 counter += 1
             else:
-                print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+                # print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
                 counter = 0
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
@@ -490,6 +490,8 @@ def visualize(visual_queue):
 
     cam_shape = (480*2+3,640*2+3)
 
+    logo = cv2.imread('NCS_963_1283.png')
+
     x = [0, 0, 0]
     y = [0, 0, 0]
     presence = [0, 0, 0]
@@ -502,26 +504,27 @@ def visualize(visual_queue):
 
         counter += 1
 
-        image = np.zeros(cam_shape)
+        image = logo
 
         # Horizontal Divisions
-        image[0,:] = 255
-        image[480*1+1,:] = 255
-        image[480*2+2,:] = 255
+
+        
+        # All the subplots
+        image[1:480+1, 641:640*2+2,:] = np.zeros(3)       # Top right :     Cam#3
+        image[1:480+1, 1:640+1,:] = np.zeros(3)             # Top left :      Cam#2
+        image[480+1:480*2+2, 1:640+1,:] = np.zeros(3)     # Bottom Left:    Cam#1
+        # image[480+1:480*2+1, 641:640*2+1,:]           # Empty subplot
+
+        color = [255, 255, 255]
+
+        image[0,:,:] = color
+        image[480*1+1,:,:] = color
+        image[480*2+2,:,:] = color
 
         # Vertical Divisions
-        image[:,0] = 255
-        image[:,640*1+1] = 255
-        image[:,640*2+2] = 255
-
-        # All the subplots
-        # image[1:480, 641:640*2+1]             Top right :     Cam#3
-        # image[1:480, 1:640]                   Top left :      Cam#2
-        # image[480+1:480*2+1, 1:640]           Bottom Left:    Cam#1
-        # image[480+1:480*2+1, 641:640*2+1]     Empty subplot
-
-        # Fourth (empty) subplot
-        image[480+1:480*2+1, 641:640*2+1] = 255*np.ones((480,640))
+        image[:,0,:] = color
+        image[:,640*1+1,:] = color
+        image[:,640*2+2,:] = color
 
         while not visual_queue.empty():
 
@@ -544,7 +547,11 @@ def visualize(visual_queue):
                 y[2] = int(datum[2])
 
 
+        color = [0, 0, 255]
+        diameter = 12
+        thickness = 4
         for cam_id in [1,2,3]:
+
             if cam_id == 1:
                 x_0 = 1
                 y_0 = 480*2+1
@@ -556,22 +563,53 @@ def visualize(visual_queue):
                 y_0 = 480
 
             if presence[cam_id-1] == 1:
-                for i in range(6):
+                for i in range(diameter):
+
+                    # Horizontal Right
                     if x[cam_id-1]+i <= 640-1 and x[cam_id-1]+i > 0:
-                        image[y_0-y[cam_id-1],x_0+x[cam_id-1]+i] = 255
+                        image[y_0-y[cam_id-1],x_0+x[cam_id-1]+i,:] = color
+                        for j in range(4):
+                            if y[cam_id-1]+j <= 480-1 and y[cam_id-1]+j > 0:
+                                image[y_0-(y[cam_id-1]+j), x_0+x[cam_id-1]+i,:] = color
+                            if y[cam_id-1]-j <= 480-1 and y[cam_id-1]-j > 0:
+                                image[y_0-(y[cam_id-1]-j), x_0+x[cam_id-1]+i,:] = color
+
+                    # Horizontal Left
                     if x[cam_id-1]-i <= 640-1 and x[cam_id-1]-i > 0:
-                        image[y_0-y[cam_id-1],x_0+x[cam_id-1]-i] = 255
+                        image[y_0-y[cam_id-1],x_0+x[cam_id-1]-i,:] = color
+                        for j in range(thickness):
+                            if y[cam_id-1]+j <= 480-1 and y[cam_id-1]+j > 0:
+                                image[y_0-(y[cam_id-1]+j), x_0+x[cam_id-1]-i,:] = color
+                            if y[cam_id-1]-j <= 480-1 and y[cam_id-1]-j > 0:
+                                image[y_0-(y[cam_id-1]-j), x_0+x[cam_id-1]-i,:] = color
+
+                    # Vertical Up
                     if y[cam_id-1]+i <= 480-1 and y[cam_id-1]+i > 0:
-                        image[y_0-(y[cam_id-1]+i), x_0+x[cam_id-1]] = 255
+                        image[y_0-(y[cam_id-1]+i), x_0+x[cam_id-1],:] = color
+                        for j in range(thickness):
+                            if x[cam_id-1]+j <= 640-1 and x[cam_id-1]+j > 0:
+                                image[y_0-(y[cam_id-1]+i),x_0+x[cam_id-1]+j,:] = color
+                            if x[cam_id-1]-j <= 640-1 and x[cam_id-1]-j > 0:
+                                image[y_0-(y[cam_id-1]+i),x_0+x[cam_id-1]-j,:] = color
+
+                    # Vertical Down
                     if y[cam_id-1]-i <= 480-1 and y[cam_id-1]-i > 0:
-                        image[y_0-(y[cam_id-1]-i), x_0+x[cam_id-1]] = 255
+                        image[y_0-(y[cam_id-1]-i), x_0+x[cam_id-1],:] = color
+                        for j in range(thickness):
+                            if x[cam_id-1]+j <= 640-1 and x[cam_id-1]+j > 0:
+                                image[y_0-(y[cam_id-1]-i),x_0+x[cam_id-1]+j,:] = color
+                            if x[cam_id-1]-j <= 640-1 and x[cam_id-1]-j > 0:
+                                image[y_0-(y[cam_id-1]-i),x_0+x[cam_id-1]-j,:] = color
+
+
+
 
         cv2.imshow("frame", image)
         cv2.waitKey(1) 
 
     print("Bye bye visualize")
 
-  
+
 
 if __name__ == "__main__":
     
