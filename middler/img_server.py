@@ -45,7 +45,7 @@ def get_image(ip_address, cam_id):
 
         frame=pickle.loads(frame_data, fix_imports=True, encoding="bytes")
         frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
-        cv2.imshow('ImageWindow',frame)
+        cv2.imshow('ImageWindow',np.transpose(frame, (1,0,2)))
         cv2.waitKey(1)
 
 

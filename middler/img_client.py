@@ -9,6 +9,7 @@ import multiprocessing
 from PIL import Image as im
 import numpy as np
 import datetime
+import torch
 
 
 
@@ -30,9 +31,10 @@ def send_image(ip_address, cam_id):
         start = datetime.datetime.now()
 
         # Creating noisy frame in gray scale 
-        frame = 50 + cam_id*50 + np.random.randint(0,50, (480, 640))
+        # frame = 50 + cam_id*50 + np.random.randint(0,50, (480, 640))
+        frame = 50 + cam_id*50 + torch.randint(0,50, (640, 480))
 
-        result, frame = cv2.imencode('.jpg', frame, encode_param)
+        result, frame = cv2.imencode('.jpg', frame.cpu().numpy() , encode_param)
         data = pickle.dumps(frame, 0)
         size = len(data)
 
