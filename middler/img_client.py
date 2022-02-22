@@ -15,7 +15,7 @@ import datetime
 
 def send_image(ip_address, cam_id):
 
-    freq = 50
+    freq = 30
     port_nb = 4000 + cam_id%3 # cam #1 --> 4001 | cam #2 --> 4002 | cam #3 --> 4000
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
