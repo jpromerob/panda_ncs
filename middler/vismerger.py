@@ -8,14 +8,20 @@ References:
 
 import socket
 import sys
+import signal
 import random
 from ctypes import *
 import numpy as np
 import multiprocessing 
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib
+matplotlib.use("TkAgg")
+matplotlib.rcParams['toolbar'] = 'None' 
 import matplotlib.pyplot as plt
+
 from scipy import stats
 from scipy.stats import multivariate_normal
+import matplotlib.animation as animation
 from scipy import stats
 import time
 import math
@@ -29,7 +35,6 @@ import zlib
 
 
 global cam_poses, r2w, r_rtl, focl
-
 
 """ This class defines a C-like struct """
 class PayloadSleipner(Structure):
@@ -207,8 +212,9 @@ def get_dvs_from_angles(angles, focl, cam_id):
 
     return px, py
 
+
 ''' Create Multivariate Gaussian Distributions'''
-def create_mgd(v2r, v_obj_poses, v_Σ, presence):   
+def create_mgd(v2r, v_obj_poses):   
 
     global r2w, r_rtl, μ, Σ
 
@@ -217,15 +223,11 @@ def create_mgd(v2r, v_obj_poses, v_Σ, presence):
     w_μ = np.zeros((3,3))
     w_Σ = np.zeros((3,3,3))
     new_μ = np.zeros((4,3)) # including a '1' at the end
-
-
-    d_Σ_up = Σ * 0.025
-    d_Σ_down = Σ * -0.025
-    Σ_min = Σ*1
-    Σ_max = Σ*10
-
     for k in range(3):
-                                              
+        
+        # @TODO: only for testing purposes
+#         μ[2] = v_obj_poses[2,k]
+                                      
         # Rotating Means from virtual-cam space to real-cam space  
         r_μ[:,k] = v2r[:,:,k] @ μ
                  
@@ -233,69 +235,21 @@ def create_mgd(v2r, v_obj_poses, v_Σ, presence):
         w_μ[:,k] = r2w[:,:,k] @ r_μ[:,k]
     
         # Translating Means from Camera (Real=Virtual) space to World space 
-        new_μ[:,k] = r_trl[:,:, k] @ [w_μ[0,k], w_μ[1,k], w_μ[2,k],1]        
-
-        if presence[k] == 1:
-            # Camera CAN see object, cigars need to narrow down on 'x' and 'y' axes (in virtual camera space)
-            if v_Σ[0,0,k] > Σ_min[0,0]:
-                v_Σ[0,0,k] = max(v_Σ[0,0,k]+d_Σ_down[0,0], Σ_min[0,0])    
-                # print("std(x|{:d}) narrows to {:.3f}".format(k+1, v_Σ[0,0,k]))
-            if v_Σ[1,1,k] > Σ_min[1,1]:
-                v_Σ[1,1,k] = max(v_Σ[1,1,k]+d_Σ_down[1,1], Σ_min[1,1])    
-                # print("std(y|{:d}) narrows to {:.3f}".format(k+1, v_Σ[1,1,k]))
-        else:
-            # Camera can NOT see object, cigars need to widen in'x' and 'y' axes (in virtual camera space)
-            if v_Σ[0,0,k] < Σ_max[0,0]:
-                v_Σ[0,0,k] = min(v_Σ[0,0,k]+d_Σ_up[0,0], Σ_max[0,0])   
-                # print("std(x|{:d}) widens to {:.3f}".format(k+1, v_Σ[0,0,k]))
-            if v_Σ[1,1,k] < Σ_max[1,1]:
-                v_Σ[1,1,k] = min(v_Σ[1,1,k]+d_Σ_up[1,1], Σ_max[1,1])     
-                # print("std(y|{:d}) widens to {:.3f}".format(k+1, v_Σ[1,1,k]))
-
-
+        new_μ[:,k] = r_trl[:,:, k] @ [w_μ[0,k], w_μ[1,k], w_μ[2,k],1]                     
                  
         # Rotating Covariance Matrix from virtual-cam space to real-cam space  
-        r_Σ[:,:,k] = v2r[:,:,k] @ v_Σ[:,:,k] @ v2r[:,:,k].T  
+        r_Σ[:,:,k] = v2r[:,:,k] @ Σ @ v2r[:,:,k].T  
                  
         # Rotating Covariance Matrix from real-cam space to world space  
         w_Σ[:,:,k] = r2w[:,:,k] @ r_Σ[:,:,k] @ r2w[:,:,k].T 
     
+    rv_1 = multivariate_normal(new_μ[0:3,0], w_Σ[:,:,0])
+    rv_2 = multivariate_normal(new_μ[0:3,1], w_Σ[:,:,1])
+    rv_3 = multivariate_normal(new_μ[0:3,2], w_Σ[:,:,2])
     
-    return new_μ, w_Σ, v_Σ
+    return new_μ, w_Σ, [rv_1, rv_2, rv_3]
 
-def analytical(μ, Σ, old_p):
-
-    mu = np.zeros(3)
-    V_n_p = np.zeros((3,3)) 
-    
-    V_1 = np.linalg.inv(Σ[:,:,0])
-    V_n_p += V_1
-    μ_1 = μ[0:3,0]
-
-    V_2 = np.linalg.inv(Σ[:,:,1])
-    V_n_p += V_2
-    μ_2 = μ[0:3,1]
-
-    V_3 = np.linalg.inv(Σ[:,:,2])
-    V_n_p += V_3
-    μ_3 = μ[0:3,2]
-
-    V_n =np.linalg.inv(V_n_p)
-    mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n
-
-    max_delta = 0.001
-    for k in range(3): # for x, y, z
-        if mu[k] > old_p[k] + max_delta:
-            # print("Jump avoided (up)\n")
-            mu[k] = old_p[k] + max_delta
-        if mu[k] < old_p[k] - max_delta:
-            # print("Jump avoided (down)\n")
-            mu[k] = old_p[k] - max_delta
-
-    return mu
-
-
-def old_good_analytical(μ, Σ, presence, old_p):
+def analytical(μ, Σ, presence, old_p):
 
 
     mu = np.zeros(3)
@@ -337,6 +291,7 @@ def old_good_analytical(μ, Σ, presence, old_p):
         if mu[k] < old_p[k] - max_delta:
             # print("Jump avoided (down)\n")
             mu[k] = old_p[k] - max_delta
+
 
     return mu
 
@@ -421,16 +376,16 @@ def img_server(bkgrnd_queue, cam_id):
         frame=pickle.loads(frame_data, fix_imports=True, encoding="bytes")
         frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
         
-        bkgrnd_queue.put(Ev_frame(cam_id, frame))
+        bkgrnd_queue.put(Ev_frame(cam_id, 120*np.transpose(frame, (1,0,2))))
 
 
 ##############################################################################################################################
 #                                                          COMBINER                                                          #
 ##############################################################################################################################
 
-def combiner(merge_queue, target_queue, ip_address, port_nb, dvs_is_src):
+def combiner(merge_queue, target_queue, xyz_queue, ip_address, port_nb, dvs_is_src):
 
-    global focl, Σ, vis_flag
+    global focl, Σ, offset, vis_flag
 
     v_poses = np.zeros((3,6))
 
@@ -502,11 +457,12 @@ def combiner(merge_queue, target_queue, ip_address, port_nb, dvs_is_src):
             # Get Rotation Matrices: virtual-cam to real-cam 
             v2r = get_rotmats(v_poses)
             
-            new_μ, w_Σ, v_Σ = create_mgd(v2r, v_obj_poses, v_Σ, presence)
-
+            # Create Multivariate Gaussian Distributions
+            new_μ, w_Σ, v_Σ = create_mgd(v2r, v_obj_poses)
               
             # Do predictions
-            prediction = analytical(new_μ, w_Σ, prediction)
+            prediction = analytical(new_μ, w_Σ, presence, prediction)
+
             # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
 
 
@@ -518,7 +474,8 @@ def combiner(merge_queue, target_queue, ip_address, port_nb, dvs_is_src):
             else:
                 print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
                 counter = 0
-            payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
+            payload_out = PayloadMunin(prediction[0]+offset[0], prediction[1]+offset[1], prediction[2]+offset[2])
+            xyz_queue.put([prediction[0]+offset[0], prediction[1]+offset[1], prediction[2]+offset[2]])
             nsent = s.send(payload_out)
 
     except AttributeError as ae:
@@ -536,7 +493,77 @@ def combiner(merge_queue, target_queue, ip_address, port_nb, dvs_is_src):
 ##############################################################################################################################
 #                                                          VISUALIZE                                                         #
 ##############################################################################################################################  
- 
+
+# This function is called periodically from FuncAnimation
+def rt_xyz(i, xyz_queue, axs, t, x, y, z, xyz):
+
+
+    while not xyz_queue.empty():
+        xyz = xyz_queue.get(False)
+
+    # Add x and y to lists
+    t.append(datetime.datetime.now().strftime('%H:%M:%S.%f'))
+    x.append(xyz[0])
+    y.append(xyz[1])
+    z.append(xyz[2])
+
+    # Limit x and y lists to 100 items
+    t = t[-100:]
+    x = x[-100:]
+    y = y[-100:]
+    z = z[-100:]
+
+    txt_x = txt_y = txt_z = "No signal"
+    if x[-1] != -100:
+        txt_x = "x = {:.3f} [m] ".format(x[-1]) 
+    if y[-1] != -100:
+        txt_y = "y = {:.3f} [m] ".format(y[-1]) 
+    if z[-1] != -100:
+        txt_z = "z = {:.3f} [m] ".format(z[-1]) 
+
+    # Draw x and y lists
+    axs[0].clear()
+    axs[0].plot(t, x, color='r')
+    axs[0].text(t[0], 0.1, txt_x, fontsize='xx-large')
+    axs[0].xaxis.set_visible(False)
+    axs[0].set_ylim([-0.7,0.3])
+    axs[0].set_ylabel('x')
+
+    axs[1].clear()
+    axs[1].plot(t, y, color='g')
+    axs[1].text(t[0], 0.8, txt_y, fontsize='xx-large')
+    axs[1].xaxis.set_visible(False)
+    axs[1].set_ylim([0,1])
+    axs[1].set_ylabel('y')
+
+    axs[2].clear()
+    axs[2].plot(t, z, color='b')
+    axs[2].text(t[0], 1.3, txt_z, fontsize='xx-large')
+    axs[2].xaxis.set_visible(False)
+    axs[2].set_ylim([0.5,1.5])
+    axs[2].set_ylabel('z')
+
+    axs[0].set_title("Object Position in Workspace")
+
+
+
+def oscilloscope(xyz_queue):
+
+    # Create figure for plotting
+    fig, axs = plt.subplots(3, figsize=(8, 12))
+
+    t = []
+    x = []
+    y = []
+    z = []
+
+    i = 0
+    xyz = [-100,-100,-100]
+
+    # Set up plot to call rt_xyz() function periodically
+    ani = animation.FuncAnimation(fig, rt_xyz, fargs=(xyz_queue, axs, t, x, y, z, xyz), interval=1)
+    plt.show()
+
 def visualize(target_queue, bkgrnd_queue):
 
     cam_shape = (480*2+3,640*2+3)
@@ -553,19 +580,11 @@ def visualize(target_queue, bkgrnd_queue):
     y = [0, 0, 0]
     presence = [0, 0, 0]
 
-    i = 0
-
-
     counter = 0
     while True:
 
         counter += 1
-
-
-
-
         white = [255, 255, 255]
-
 
         # Update target's (x,y)
         while not target_queue.empty():
@@ -678,7 +697,8 @@ def visualize(target_queue, bkgrnd_queue):
 
 if __name__ == "__main__":
     
-    global cam_poses, r2w, r_rtl, μ, Σ, focl, vis_flag
+    global cam_poses, r2w, r_rtl, μ, Σ, offset, focl, vis_flag
+
 
     try:
         d_source = sys.argv[1]
@@ -716,6 +736,7 @@ if __name__ == "__main__":
     merge_queue = multiprocessing.Queue()
     target_queue = multiprocessing.Queue()
     bkgrnd_queue = multiprocessing.Queue()
+    xyz_queue = multiprocessing.Queue()
 
     focl = set_focal_lengths()
 
@@ -737,20 +758,24 @@ if __name__ == "__main__":
     bgi_cam_2 = multiprocessing.Process(target=img_server, args=(bkgrnd_queue, 2,))
     bgi_cam_3 = multiprocessing.Process(target=img_server, args=(bkgrnd_queue, 3,))
 
+    
 
     if d_source == "dvs" : 
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.75])
         Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3.6]])    
-        merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, ip_address, port_nb,True,))
+        offset = [-0.059, 0.015, 0.034]
+        merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, xyz_queue, ip_address, port_nb,True,))
     if d_source == "opt" :
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.9])
         Σ = np.array([[0.02,0,0],[0,0.02,0],[0,0,1.8]])    
-        merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, ip_address, port_nb,False,))
+        offset = [0, 0, 0]
+        merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, xyz_queue, ip_address, port_nb,False,))
 
     if vis_flag:
         display = multiprocessing.Process(target=visualize, args=(target_queue, bkgrnd_queue, ))
+        rt_plot = multiprocessing.Process(target=oscilloscope, args=(xyz_queue, ))
 
     merger.start()
 
@@ -764,11 +789,13 @@ if __name__ == "__main__":
 
     if vis_flag:
         display.start()
+        rt_plot.start()
 
     merger.join()
 
     if vis_flag:
         display.join()
+        rt_plot.join()
 
     pos_cam_1.join()
     pos_cam_2.join()
