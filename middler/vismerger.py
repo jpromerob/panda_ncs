@@ -23,6 +23,9 @@ import datetime
 import os
 import random
 import cv2
+import pickle
+import struct ## new
+import zlib
 
 
 global cam_poses, r2w, r_rtl, focl
@@ -39,7 +42,12 @@ class PayloadMunin(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
                 ("z", c_float)]
-                
+
+class Ev_frame:
+    def __init__(self, cam_id, frame):
+        self.cam_id = cam_id
+        self.frame = frame
+
 def set_focal_lengths():
 
     focl = np.zeros((2,3))
@@ -333,10 +341,10 @@ def old_good_analytical(μ, Σ, presence, old_p):
     return mu
 
 ##############################################################################################################################
-#                                                         UDP SERVER                                                         #
+#                                                    POSITION UDP SERVER                                                     #
 ##############################################################################################################################
 
-def udpserver(merge_queue, cam_id):
+def pos_server(merge_queue, cam_id):
 
 
     port_nb = 3000 + cam_id%3 # cam #1 --> 3001 | cam #2 --> 3002 | cam #3 --> 3000
@@ -373,11 +381,54 @@ def udpserver(merge_queue, cam_id):
         ssock.close()
 
 
+
+##############################################################################################################################
+#                                                 EVENT 'FRAME' TCP SERVER                                                   #
+##############################################################################################################################
+def img_server(bkgrnd_queue, cam_id):
+
+    ip_address = "172.16.222.31"
+    port_nb = 4000 + cam_id%3 # cam #1 --> 4001 | cam #2 --> 4002 | cam #3 --> 4000
+
+    s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    print('Socket created')
+
+    s.bind((ip_address, port_nb))
+    print('Socket bind complete')
+    s.listen(10)
+    print('Socket now listening')
+
+    conn,addr=s.accept()
+
+    data = b""
+    payload_size = struct.calcsize(">L")
+    # print("payload_size: {}".format(payload_size))
+    while True:
+        while len(data) < payload_size:
+            # print("Recv: {}".format(len(data)))
+            data += conn.recv(4096*4)
+
+        # print("Done Recv: {}".format(len(data)))
+        packed_msg_size = data[:payload_size]
+        data = data[payload_size:]
+        msg_size = struct.unpack(">L", packed_msg_size)[0]
+        # print("msg_size: {}".format(msg_size))
+        while len(data) < msg_size:
+            data += conn.recv(4096*4)
+        frame_data = data[:msg_size]
+        data = data[msg_size:]
+
+        frame=pickle.loads(frame_data, fix_imports=True, encoding="bytes")
+        frame = cv2.imdecode(frame, cv2.IMREAD_COLOR)
+        
+        bkgrnd_queue.put(Ev_frame(cam_id, frame))
+
+
 ##############################################################################################################################
 #                                                          COMBINER                                                          #
 ##############################################################################################################################
 
-def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
+def combiner(merge_queue, target_queue, ip_address, port_nb, dvs_is_src):
 
     global focl, Σ, vis_flag
 
@@ -441,7 +492,7 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
 
             if vis_flag:
                 for k in range(3):
-                    visual_queue.put([k+1, px[k]+320, py[k]+240, presence[k]])
+                    target_queue.put([k+1, px[k]+320, py[k]+240, presence[k]])
 
             start = datetime.datetime.now()
 
@@ -465,7 +516,7 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
             if counter < max_counter-1:
                 counter += 1
             else:
-                # print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+                print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
                 counter = 0
             payload_out = PayloadMunin(prediction[0], prediction[1], prediction[2])
             nsent = s.send(payload_out)
@@ -486,11 +537,17 @@ def combiner(merge_queue, visual_queue, ip_address, port_nb, dvs_is_src):
 #                                                          VISUALIZE                                                         #
 ##############################################################################################################################  
  
-def visualize(visual_queue):
+def visualize(target_queue, bkgrnd_queue):
 
     cam_shape = (480*2+3,640*2+3)
 
     logo = cv2.imread('NCS_963_1283.png')
+    image = logo
+
+    # Black background in all active subplots
+    bgi_1 = np.zeros((480,640,3))
+    bgi_2 = np.zeros((480,640,3))
+    bgi_3 = np.zeros((480,640,3))
 
     x = [0, 0, 0]
     y = [0, 0, 0]
@@ -504,38 +561,22 @@ def visualize(visual_queue):
 
         counter += 1
 
-        image = logo
 
-        # Horizontal Divisions
 
-        
-        # All the subplots
-        image[1:480+1, 641:640*2+2,:] = np.zeros(3)       # Top right :     Cam#3
-        image[1:480+1, 1:640+1,:] = np.zeros(3)             # Top left :      Cam#2
-        image[480+1:480*2+2, 1:640+1,:] = np.zeros(3)     # Bottom Left:    Cam#1
-        # image[480+1:480*2+1, 641:640*2+1,:]           # Empty subplot
 
-        color = [255, 255, 255]
+        white = [255, 255, 255]
 
-        image[0,:,:] = color
-        image[480*1+1,:,:] = color
-        image[480*2+2,:,:] = color
 
-        # Vertical Divisions
-        image[:,0,:] = color
-        image[:,640*1+1,:] = color
-        image[:,640*2+2,:] = color
+        # Update target's (x,y)
+        while not target_queue.empty():
 
-        while not visual_queue.empty():
-
-            datum = visual_queue.get()         
+            datum = target_queue.get()         
             cam_id = datum[0]
             presence[cam_id-1]=datum[3]
 
             x_0 = 0
             y_0 = 0
 
-            # Updating (x,y)
             if cam_id == 1:
                 x[0] = int(datum[1])
                 y[0] = int(datum[2])
@@ -546,9 +587,23 @@ def visualize(visual_queue):
                 x[2] = int(datum[1])
                 y[2] = int(datum[2])
 
+        # Update background
+        while not bkgrnd_queue.empty():
+            evfr = bkgrnd_queue.get()
+            if evfr.cam_id == 1:
+                bgi_1 = evfr.frame
+            if evfr.cam_id == 2:
+                bgi_2 = evfr.frame
+            if evfr.cam_id == 3:
+                bgi_3 = evfr.frame
 
+        # Draw Backgrounds
+        image[480+1:480*2+1, 1:640+1,:] = bgi_1     # Bottom Left:    Cam#1
+        image[1:480+1, 1:640+1,:] = bgi_2           # Top left :      Cam#2
+        image[1:480+1, 641:640*2+1,:] = bgi_3       # Top right :     Cam#3
+        # Draw TargetS
         color = [0, 0, 255]
-        diameter = 12
+        diameter = 16
         thickness = 4
         for cam_id in [1,2,3]:
 
@@ -563,6 +618,7 @@ def visualize(visual_queue):
                 y_0 = 480
 
             if presence[cam_id-1] == 1:
+                
                 for i in range(diameter):
 
                     # Horizontal Right
@@ -603,6 +659,15 @@ def visualize(visual_queue):
 
 
 
+        # Horizontal Divisions
+        image[0,:,:] = white
+        image[480*1+1,:,:] = white
+        image[480*2+2,:,:] = white
+
+        # Vertical Divisions
+        image[:,0,:] = white
+        image[:,640*1+1,:] = white
+        image[:,640*2+2,:] = white
 
         cv2.imshow("frame", image)
         cv2.waitKey(1) 
@@ -649,7 +714,8 @@ if __name__ == "__main__":
 
 
     merge_queue = multiprocessing.Queue()
-    visual_queue = multiprocessing.Queue()
+    target_queue = multiprocessing.Queue()
+    bkgrnd_queue = multiprocessing.Queue()
 
     focl = set_focal_lengths()
 
@@ -663,37 +729,52 @@ if __name__ == "__main__":
     r_trl = get_transmats(cam_poses)
 
 
-    cam_1 = multiprocessing.Process(target=udpserver, args=(merge_queue,1,))
-    cam_2 = multiprocessing.Process(target=udpserver, args=(merge_queue,2,))
-    cam_3 = multiprocessing.Process(target=udpserver, args=(merge_queue,3,))
+    pos_cam_1 = multiprocessing.Process(target=pos_server, args=(merge_queue,1,))
+    pos_cam_2 = multiprocessing.Process(target=pos_server, args=(merge_queue,2,))
+    pos_cam_3 = multiprocessing.Process(target=pos_server, args=(merge_queue,3,))
+
+    bgi_cam_1 = multiprocessing.Process(target=img_server, args=(bkgrnd_queue, 1,))
+    bgi_cam_2 = multiprocessing.Process(target=img_server, args=(bkgrnd_queue, 2,))
+    bgi_cam_3 = multiprocessing.Process(target=img_server, args=(bkgrnd_queue, 3,))
+
 
     if d_source == "dvs" : 
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.75])
         Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3.6]])    
-        show = multiprocessing.Process(target=combiner, args=(merge_queue, visual_queue, ip_address, port_nb,True,))
+        merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, ip_address, port_nb,True,))
     if d_source == "opt" :
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.9])
         Σ = np.array([[0.02,0,0],[0,0.02,0],[0,0,1.8]])    
-        show = multiprocessing.Process(target=combiner, args=(merge_queue, visual_queue, ip_address, port_nb,False,))
+        merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, ip_address, port_nb,False,))
 
     if vis_flag:
-        v_all = multiprocessing.Process(target=visualize, args=(visual_queue,))
+        display = multiprocessing.Process(target=visualize, args=(target_queue, bkgrnd_queue, ))
 
-    show.start()
-    cam_1.start()
-    cam_2.start()
-    cam_3.start()
+    merger.start()
+
+    pos_cam_1.start()
+    pos_cam_2.start()
+    pos_cam_3.start()
+
+    bgi_cam_1.start()
+    bgi_cam_2.start()
+    bgi_cam_3.start()
 
     if vis_flag:
-        v_all.start()
+        display.start()
 
-    show.join()
+    merger.join()
 
     if vis_flag:
-        v_all.join()
-    cam_1.join()
-    cam_2.join()
-    cam_3.join()
+        display.join()
+
+    pos_cam_1.join()
+    pos_cam_2.join()
+    pos_cam_3.join()
+
+    bgi_cam_1.join()
+    bgi_cam_2.join()
+    bgi_cam_3.join()
 
