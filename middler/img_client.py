@@ -15,7 +15,7 @@ import datetime
 
 def send_image(ip_address, cam_id):
 
-    freq = 25
+    freq = 50
     port_nb = 4000 + cam_id%3 # cam #1 --> 4001 | cam #2 --> 4002 | cam #3 --> 4000
 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -28,9 +28,10 @@ def send_image(ip_address, cam_id):
     while True:
 
         start = datetime.datetime.now()
-            
-        frame = np.random.randint(0,255, (480, 640, 3))
-        frame[:,:,cam_id-1] = np.zeros((480,640))
+
+        # Creating noisy frame in gray scale 
+        frame = 50 + cam_id*50 + np.random.randint(0,50, (480, 640))
+
         result, frame = cv2.imencode('.jpg', frame, encode_param)
         data = pickle.dumps(frame, 0)
         size = len(data)
