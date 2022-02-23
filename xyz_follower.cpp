@@ -142,7 +142,7 @@ double check_limit(double value, char axis) {
 /***********************************************************************************************/
 void save_nextcoor(double x, double y, double z) {
 
-  double offset_x = 0.10; // offset from object origin to robot end effector
+  double offset_x = 0.20; // offset from object origin to robot end effector
   double offset_y = 0.20;
   double offset_z = 0.10;
 
