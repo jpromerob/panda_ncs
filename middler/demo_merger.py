@@ -568,12 +568,14 @@ def oscilloscope(xyz_queue):
 
 def visualize(target_queue, bkgrnd_queue):
 
-    th = 122
-    cam_shape = (480*2+3*th,640*2+3*th,3)
+    th = 20
+    mrgn = int((2560*(480*2+3*th)/1340-(640*2+3*th))/2)
+
+    cam_shape = (480*2+3*th,640*2+th+2*mrgn,3)
 
     logo = cv2.imread('NCS_1326_1646.png')
-    image = logo
-    # image = np.ones(cam_shape)*255
+    # image = logo
+    image = np.ones(cam_shape)*255
 
     # Black background in all active subplots
     bgi_1 = np.zeros((480,640,3))
@@ -623,9 +625,9 @@ def visualize(target_queue, bkgrnd_queue):
         
 
         # Draw Backgrounds
-        image[(480*1+2*th):(480*2+2*th), (1*th):(640+1*th),:] = bgi_1     # Bottom Left:    Cam#1
-        image[(1*th):(480+1*th), (1*th):(640+1*th),:] = bgi_2           # Top left :      Cam#2
-        image[(1*th):(480+1*th), (640+2*th):(640*2+2*th),:] = bgi_3       # Top right :     Cam#3
+        image[(480*1+2*th):(480*2+2*th), (1*th+1*mrgn):(640+1*th+1*mrgn),:] = bgi_1     # Bottom Left:    Cam#1
+        image[(1*th):(480+1*th), (1*th+1*mrgn):(640+1*th+1*mrgn),:] = bgi_2           # Top left :      Cam#2
+        image[(1*th):(480+1*th), (640+2*th+1*mrgn):(640*2+2*th+1*mrgn),:] = bgi_3       # Top right :     Cam#3
         # Draw TargetS
         color = [0, 0, 255]
         diameter = 16
@@ -633,13 +635,13 @@ def visualize(target_queue, bkgrnd_queue):
         for cam_id in [1,2,3]:
 
             if cam_id == 1:
-                x_0 = 1*th
+                x_0 = 1*th+1*mrgn
                 y_0 = 480*2+2*th-1
             if cam_id == 2:
-                x_0 = 1*th
+                x_0 = 1*th+1*mrgn
                 y_0 = 480*1+1*th-1
             if cam_id == 3:
-                x_0 = 640*1+2*th
+                x_0 = 640*1+2*th+1*mrgn
                 y_0 = 480*1+1*th-1
 
             if presence[cam_id-1] == 1:
@@ -690,11 +692,14 @@ def visualize(target_queue, bkgrnd_queue):
         image[480*2+2*th:480*2+3*th:,:,:] = white
 
         # Vertical Divisions
-        image[:,0:th,:] = white
-        image[:,640*1+1*th:640*1+2*th,:] = white
-        image[:,640*2+2*th:640*2+3*th,:] = white
+        image[:,0:th+1*mrgn,:] = white
+        image[:,640*1+1*th+1*mrgn:640*1+2*th+1*mrgn,:] = white
+        image[:,640*2+2*th+1*mrgn:640*2+3*th+1*mrgn,:] = white
 
-        cv2.imshow("Pixel Space", image)
+        h = 1340
+        l = int((640*2+3*th+mrgn*2)*1340/(480*2+3*th))
+        im_final = cv2.resize(image,(l,h))
+        cv2.imshow("Pixel Space", im_final)
         cv2.waitKey(1) 
 
     print("Bye bye visualize")
