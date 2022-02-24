@@ -550,7 +550,7 @@ def rt_xyz(i, xyz_queue, axs, t, x, y, z, xyz):
 def oscilloscope(xyz_queue):
 
     # Create figure for plotting
-    fig, axs = plt.subplots(3, figsize=(9.0, 13.73))
+    fig, axs = plt.subplots(3, figsize=(8.72, 6.18))
     fig.canvas.manager.set_window_title('World Space')
 
 
@@ -568,10 +568,18 @@ def oscilloscope(xyz_queue):
 
 def visualize(target_queue, bkgrnd_queue):
 
-    th = 20
-    mrgn = int((2560*(480*2+3*th)/1340-(640*2+3*th))/2)
+    should_resize = True
 
-    cam_shape = (480*2+3*th,640*2+th+2*mrgn,3)
+    h = 1340
+    l = 2560
+
+    hs = 200
+    vs = 10
+    mrgn = int((l*(480*2+3*vs)/h-(640*2+hs))/2)
+
+    print(2560/(640*2+hs))
+
+    cam_shape = (480*2+3*vs,640*2+hs+2*mrgn,3)
 
     logo = cv2.imread('NCS_1326_1646.png')
     # image = logo
@@ -586,11 +594,22 @@ def visualize(target_queue, bkgrnd_queue):
     y = [0, 0, 0]
     presence = [0, 0, 0]
 
+    white = [255, 255, 255]
+
+    # Horizontal Divisions
+    image[0:vs,:,:] = white
+    image[480*1+1*vs:480*1+2*vs,:,:] = white
+    image[480*2+2*vs:480*2+3*vs:,:,:] = white
+
+    # Vertical Divisions
+    image[:,0:1*mrgn,:] = white
+    image[:,640*1+1*mrgn:640*1+1*hs+1*mrgn,:] = white
+    image[:,640*2+1*hs+1*mrgn:640*2+1*hs+1*mrgn,:] = white
+
     counter = 0
     while True:
 
         counter += 1
-        white = [255, 255, 255]
 
         # Update target's (x,y)
         while not target_queue.empty():
@@ -621,13 +640,12 @@ def visualize(target_queue, bkgrnd_queue):
                 bgi_2 = evfr.frame
             if evfr.cam_id == 3:
                 bgi_3 = evfr.frame
-
-        
-
+     
         # Draw Backgrounds
-        image[(480*1+2*th):(480*2+2*th), (1*th+1*mrgn):(640+1*th+1*mrgn),:] = bgi_1     # Bottom Left:    Cam#1
-        image[(1*th):(480+1*th), (1*th+1*mrgn):(640+1*th+1*mrgn),:] = bgi_2           # Top left :      Cam#2
-        image[(1*th):(480+1*th), (640+2*th+1*mrgn):(640*2+2*th+1*mrgn),:] = bgi_3       # Top right :     Cam#3
+        image[(480*1+2*vs):(480*2+2*vs), (1*mrgn):(640+1*mrgn),:] = bgi_1     # Bottom Left:    Cam#1
+        image[(1*vs):(480+1*vs), (+1*mrgn):(640+1*mrgn),:] = bgi_2           # Top left :      Cam#2
+        image[(1*vs):(480+1*vs), (640+1*hs+1*mrgn):(640*2+1*hs+1*mrgn),:] = bgi_3       # Top right :     Cam#3
+
         # Draw TargetS
         color = [0, 0, 255]
         diameter = 16
@@ -635,14 +653,14 @@ def visualize(target_queue, bkgrnd_queue):
         for cam_id in [1,2,3]:
 
             if cam_id == 1:
-                x_0 = 1*th+1*mrgn
-                y_0 = 480*2+2*th-1
+                x_0 = 1*mrgn
+                y_0 = 480*2+2*vs-1
             if cam_id == 2:
-                x_0 = 1*th+1*mrgn
-                y_0 = 480*1+1*th-1
+                x_0 = 1*mrgn
+                y_0 = 480*1+1*vs-1
             if cam_id == 3:
-                x_0 = 640*1+2*th+1*mrgn
-                y_0 = 480*1+1*th-1
+                x_0 = 640*1+1*hs+1*mrgn
+                y_0 = 480*1+1*vs-1
 
             if presence[cam_id-1] == 1:
                 
@@ -686,20 +704,11 @@ def visualize(target_queue, bkgrnd_queue):
 
 
 
-        # Horizontal Divisions
-        image[0:th,:,:] = white
-        image[480*1+1*th:480*1+2*th,:,:] = white
-        image[480*2+2*th:480*2+3*th:,:,:] = white
-
-        # Vertical Divisions
-        image[:,0:th+1*mrgn,:] = white
-        image[:,640*1+1*th+1*mrgn:640*1+2*th+1*mrgn,:] = white
-        image[:,640*2+2*th+1*mrgn:640*2+3*th+1*mrgn,:] = white
-
-        h = 1340
-        l = int((640*2+3*th+mrgn*2)*1340/(480*2+3*th))
-        im_final = cv2.resize(image,(l,h))
-        cv2.imshow("Pixel Space", im_final)
+        if should_resize:
+            im_final = cv2.resize(image,(l,h), interpolation = cv2.INTER_NEAREST)
+            cv2.imshow("Pixel Space", im_final)
+        else:
+            cv2.imshow("Pixel Space", image)
         cv2.waitKey(1) 
 
     print("Bye bye visualize")

@@ -98,7 +98,7 @@ def predictor(
         c = 0
         c_total = 0
         c_frame = 0
-        freq_frame = 30
+        freq_frame = 25
         c_fram_max = int((1/interval)/freq_frame)
 
         # model = ModelInference(checkpoint, "cuda")
