@@ -742,6 +742,9 @@ if __name__ == "__main__":
 
     # Get camera poses
     cam_poses = set_cam_poses()
+
+
+    # cam_poses, focl = load_params('params.xml')
     
     # Get Rotation Matrices: real-cam to world 
     r2w = get_rotmats(cam_poses)
@@ -762,9 +765,9 @@ if __name__ == "__main__":
 
     if d_source == "dvs" : 
         # Mean array and covariance matrix in virtual camera space
-        μ = np.array([0,0,-0.75])
+        μ = np.array([0,0,-0.95])
         Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3.6]])    
-        offset = [-0.059, 0.015, 0.034]
+        offset = [-0.043, -0.007, 0.034]
         merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, xyz_queue, ip_address, port_nb,True,))
     if d_source == "opt" :
         # Mean array and covariance matrix in virtual camera space
