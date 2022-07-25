@@ -64,8 +64,15 @@ def generate_coordinates():
 
             xyz_out = Coordinates(x, y, z)
 
-            print("Sending x={:f}, y={:f}, z={:f}".format(xyz_out.x, xyz_out.y, xyz_out.z))
-            nsent = s.send(xyz_out)          
+            print("Sending {:f} | {:f} | {:f}".format(xyz_out.x, xyz_out.y, xyz_out.z))
+            nsent = s.send(xyz_out)
+
+
+            buff = s.recv(sizeof(Joints))
+            if buff:
+                joints_in = Joints.from_buffer_copy(buff)          
+
+                print("Receiving {:f} | {:f} | {:f} | {:f} | {:f} | {:f} | {:f}".format(joints_in.q0, joints_in.q1, joints_in.q2, joints_in.q3, joints_in.q4, joints_in.q5, joints_in.q6))
             time.sleep(0.1)
 
             idx += 2
