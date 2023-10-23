@@ -418,7 +418,7 @@ def img_server(bkgrnd_queue, cam_id):
 
 def combiner(merge_queue, target_queue, xyz_queue, ip_address, port_nb, dvs_is_src):
 
-    global focl, Σ, offset, vis_flag
+    global focl, Σ, offset
 
     v_poses = np.zeros((3,6))
 
@@ -486,9 +486,6 @@ def combiner(merge_queue, target_queue, xyz_queue, ip_address, port_nb, dvs_is_s
                     px[cam_id-1], py[cam_id-1] = get_dvs_from_angles(r_obj_angles[:, cam_id-1], focl, cam_id)
             
 
-            if vis_flag:
-                for k in range(3):
-                    target_queue.put([k+1, px[k]+320, py[k]+240, presence[k]])
 
             start = datetime.datetime.now()
 
@@ -763,7 +760,7 @@ def visualize(target_queue, bkgrnd_queue):
 
 if __name__ == "__main__":
     
-    global cam_poses, r2w, r_rtl, μ, Σ, offset, focl, vis_flag
+    global cam_poses, r2w, r_rtl, μ, Σ, offset, focl
 
 
     try:
@@ -787,14 +784,6 @@ if __name__ == "__main__":
                 ip_address = "172.16.222.31"
             if d_destin == "panda" : 
                 ip_address = "172.16.222.48"
-
-        vis_flag = False
-        vis_arg = sys.argv[3]
-        if vis_arg == "on":
-            print("Visualization on")
-            vis_flag = True        
-        else:
-            vis_flag = False
 
     except:
         print("Try python3 merger.py <dvs|opt> <nuc|munin|panda> <on|off>")
@@ -841,9 +830,6 @@ if __name__ == "__main__":
         offset = [0, 0, 0]
         merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, xyz_queue, ip_address, port_nb,False,))
 
-    if vis_flag:
-        display = multiprocessing.Process(target=visualize, args=(target_queue, bkgrnd_queue, ))
-        rt_plot = multiprocessing.Process(target=oscilloscope, args=(xyz_queue, ))
 
     merger.start()
 
@@ -855,15 +841,9 @@ if __name__ == "__main__":
     bgi_cam_2.start()
     bgi_cam_3.start()
 
-    if vis_flag:
-        display.start()
-        rt_plot.start()
 
     merger.join()
 
-    if vis_flag:
-        display.join()
-        rt_plot.join()
 
     pos_cam_1.join()
     pos_cam_2.join()
