@@ -32,11 +32,6 @@
 #include <franka/robot.h>
 #include <franka/gripper.h>
 #include <franka/robot.h>
-#include <franka/spline.h>
-
-#include <franka/NatNetTypes.h>
-#include <franka/NatNetCAPI.h>
-#include <franka/NatNetClient.h>
 
 using namespace std;
 
@@ -142,9 +137,9 @@ double check_limit(double value, char axis) {
 /***********************************************************************************************/
 void save_nextcoor(double x, double y, double z) {
 
-  double offset_x = 0.20; // offset from object origin to robot end effector
+  double offset_x = 0.10; // offset from object origin to robot end effector
   double offset_y = 0.20;
-  double offset_z = 0.10;
+  double offset_z = 0.20;
 
   if (mutex_nextcoor.try_lock()) {
     nextcoor.x = check_limit( x + 0.35 + offset_x, 'x'); 
@@ -159,250 +154,6 @@ void save_nextcoor(double x, double y, double z) {
 
 }
 
-
-
-void _WriteFrame(FILE* fp, sFrameOfMocapData* data);
-void NATNET_CALLCONV DataHandler(sFrameOfMocapData* data, void* pUserData);    // receives data from the server
-int ConnectClient();
-char getch();
-
-static const ConnectionType kDefaultConnectionType = ConnectionType_Multicast;
-
-NatNetClient* g_pClient = NULL;
-FILE* g_outputFile;
-
-sNatNetClientConnectParams g_connectParams;
-
-int t_counter = 0;
-double init_t = 0.0;
-
-
-
-
-
-/***********************************************************************************************/
-/*                         
-/*                                                                                            
-/*  Establish a NatNet Client connection                                                                                              
-/*                                                                                            
-/*                                                                                            
-/***********************************************************************************************/
-int ConnectClient()
-{
-    // Release previous server
-    g_pClient->Disconnect();
-
-    // Init Client and connect to NatNet server
-    int retCode = g_pClient->Connect( g_connectParams );
-    if (retCode != ErrorCode_OK)
-    {
-        printf("Unable to connect to server.  Error code: %d. Exiting", retCode);
-        return ErrorCode_Internal;
-    }
-
-    return ErrorCode_OK;
-}
-
-
-/***********************************************************************************************/
-/*                         
-/*                                                                                            
-/*  DataHandler receives data from the server                                                                                         
-/*                                                                                            
-/*                                                                                            
-/***********************************************************************************************/
-void NATNET_CALLCONV DataHandler(sFrameOfMocapData* data, void* pUserData)
-{
-
-  bool save_and_print = false;
-
-  NatNetClient* pClient = (NatNetClient*) pUserData;
-
-  /* Timestamps start at 0.000 */
-  if (t_counter == 0) {
-      init_t = data->fTimestamp;
-      t_counter++;
-  }
-
-  if (save_and_print) {
-    if (g_outputFile) {
-        _WriteFrame( g_outputFile, data );
-    }
-  }
-    
-
-  int i=0;
-	
-  // timecode - for systems with an eSync and SMPTE timecode generator - decode to values
-	int hour, minute, second, frame, subframe;
-  NatNet_DecodeTimecode( data->Timecode, data->TimecodeSubframe, &hour, &minute, &second, &frame, &subframe );
-
-	
-  
-  
-  for(i=0; i < data->nRigidBodies; i++)
-  {
-        // params
-        // 0x01 : bool, rigid body was successfully tracked in this frame
-        bool bTrackingValid = data->RigidBodies[i].params & 0x01;
-        if (save_and_print) {
-          printf("%3.3lf\t%3.3f\t%3.3f\t%3.3f\n",
-              data->fTimestamp-init_t, 
-              data->RigidBodies[i].x,
-              data->RigidBodies[i].y,
-              data->RigidBodies[i].z);
-        }
-        save_nextcoor(data->RigidBodies[i].x, data->RigidBodies[i].y, data->RigidBodies[i].z);
-
-        
-  }
-
-
-
-
-	
-}
-
-/***********************************************************************************************/
-/*                         
-/*                                                                                            
-/*  Write t,x,y,z in *.csv file
-/*                                                                                            
-/*                                                                                            
-/***********************************************************************************************/
-void _WriteFrame(FILE* fp, sFrameOfMocapData* data)
-{
-    int i;
-    for(i=0; i < data->nRigidBodies; i++)
-    {
-        fprintf(fp, "%3.3lf,%3.3f,%3.3f,%3.3f\n",
-            data->fTimestamp-init_t, 
-            data->RigidBodies[i].x,
-            data->RigidBodies[i].y,
-            data->RigidBodies[i].z);
-    }
-
-}
-
-
-/***********************************************************************************************/
-/*                         
-/*                                                                                            
-/*  Get data ... 
-/*                                                                                            
-/*                                                                                            
-/***********************************************************************************************/
-char getch()
-{
-    char buf = 0;
-    termios old = { 0 };
-
-    fflush( stdout );
-
-    if ( tcgetattr( 0, &old ) < 0 )
-        perror( "tcsetattr()" );
-
-    old.c_lflag &= ~ICANON;
-    old.c_lflag &= ~ECHO;
-    old.c_cc[VMIN] = 1;
-    old.c_cc[VTIME] = 0;
-
-    if ( tcsetattr( 0, TCSANOW, &old ) < 0 )
-        perror( "tcsetattr ICANON" );
-
-    if ( read( 0, &buf, 1 ) < 0 )
-        perror( "read()" );
-
-    old.c_lflag |= ICANON;
-    old.c_lflag |= ECHO;
-
-    if ( tcsetattr( 0, TCSADRAIN, &old ) < 0 )
-        perror( "tcsetattr ~ICANON" );
-
-
-    return buf;
-}
-
-
-/***********************************************************************************************/
-/* This function is in charge of receiving data (x, y, z from optitrack) through udp multicast */
-/*                                                                                             */
-/*                                                                                             */
-/*                                                                                             */
-/*                                                                                             */
-/***********************************************************************************************/
-int get_opt_data() 
-{
-
-    // create NatNet client
-    g_pClient = new NatNetClient();
-
-    // set the frame callback handler
-    g_pClient->SetFrameReceivedCallback(DataHandler, g_pClient );	// this function will receive data from the server
-
-    g_connectParams.connectionType = kDefaultConnectionType;
-    
-    g_connectParams.serverAddress = "172.16.222.18";  // Optitrack
-    g_connectParams.localAddress = "172.16.222.31";   // Munin
-
-    int iResult;
-
-    // Connect to Motive
-    iResult = ConnectClient();
-    if (iResult != ErrorCode_OK)
-    {
-        printf("Error initializing client.  See log for details.  Exiting");
-        return 1;
-    }
-	
-	// Create data file for writing received stream into
-	const char* szFile = "some_data.csv";
-
-	g_outputFile = fopen(szFile, "w");
-	if(!g_outputFile)
-	{
-		printf("error opening output file %s.  Exiting.", szFile);
-		exit(1);
-	}
-
-
-	// Ready to receive marker stream!
-	printf("\n\n\nClient is connected to server and listening for data...\n\n\n");
-	int c;
-	bool bExit = false;
-	while(c=getch())
-	{
-		switch(c)
-		{
-			case 'q':
-        printf("Asked to Stop\n");
-				bExit = true;		
-				break;	
-			default:
-				break;
-		}
-		if(bExit)
-			break;
-	}
-
-	// Done - clean up.
-	if (g_pClient)
-	{
-		g_pClient->Disconnect();
-		delete g_pClient;
-		g_pClient = NULL;
-	}
-
-	if (g_outputFile)
-	{
-		fclose(g_outputFile);
-    printf("Closing file\n");
-		g_outputFile = NULL;
-	}
-
-	return ErrorCode_OK;  
-
-}
 
 
 
@@ -580,7 +331,7 @@ void close_gripper(char * robot_ip) {
 bool target_approval(double x_i, double y_i, double z_i, double x_f, double y_f, double z_f) {
 
   bool flag = false;
-  double delta = 0.002;
+  double delta = 0.001;
 
   if((abs(x_i-x_f) > delta) || (abs(y_i-y_f) > delta) || (abs(z_i-z_f) > delta)) {
     flag = true;
@@ -767,7 +518,7 @@ int main(int argc, char** argv) {
 
   op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
 
-  std::cout << "JPRB: Hello NCS people :)\n";
+  std::cout << "Hello NCS people :)\n";
   
 
   if (argc != 3) {
@@ -782,7 +533,7 @@ int main(int argc, char** argv) {
   // This is to prevent sudden motion
   init_panda_pva(argv[1]);
 
-  close_gripper(argv[1]);
+  // close_gripper(argv[1]);
    
 
   switch(op_mode){
@@ -803,17 +554,6 @@ int main(int argc, char** argv) {
         std::thread snn_process (get_snn_data);
         std::thread mot_process (move_end_effector, argv[1]);  
         snn_process.join(); 
-        printf("Stopped getting incoming data\n");
-        mot_process.join();
-        break;
-      }
-
-    // This mode is for reading incoming data (from OPTITRACK) AND making the robot follow
-    case 2:
-      {
-        std::thread opt_process (get_opt_data);
-        std::thread mot_process (move_end_effector, argv[1]);  
-        opt_process.join(); 
         printf("Stopped getting incoming data\n");
         mot_process.join();
         break;

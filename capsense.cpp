@@ -47,6 +47,10 @@ typedef struct xyz_payload_t {
     float x;
     float y;
     float z;
+    float qx;
+    float qy;
+    float qz;
+    float qw;
 } xyz_payload;
 
 typedef struct joints_payload_t {
@@ -57,7 +61,18 @@ typedef struct joints_payload_t {
     double q4;
     double q5;
     double q6;
+    
+    double x;
+    double y;
+    double z;
+
+    double qx;
+    double qy;
+    double qz;
+    double qw;
 } joints_payload;
+
+joints_payload joints_out;
 
 #pragma pack()
 
@@ -65,23 +80,18 @@ typedef struct joints_payload_t {
 int op_mode;
 
 
-double scale = 0.9; // scaling constant 
-double max_v = 1.7 * scale; // velocity
-double max_a = 13.0 * scale; // acceleration
-// double max_j = 6500.0 * scale; // Jerk
-double max_j = 100; // Jerk
-
 typedef struct coor
 {
     double x;
     double y;
     double z;
-
+    double qx;
+    double qy;
+    double qz;
+    double qw;
 } coor;
 
-std::mutex mutex_sensors;
 std::mutex mutex_nextcoor;
-std::mutex mutex_p_current;
 
 
 /* Limits of the workspace*/
@@ -90,14 +100,10 @@ coor maximum;
 
 /* Current Target */
 coor c_target;
-coor u_target;
 
 /* What the optitrack sees (in Panda coordinate framework)*/
 coor nextcoor;
 
-/* Proprioception */
-coor p_current;
-coor p_delta;
 
 
 
@@ -151,7 +157,7 @@ double check_limit(double value, char axis) {
 /*
 /*
 /***********************************************************************************************/
-void save_nextcoor(double x, double y, double z) {
+void save_nextcoor(double x, double y, double z, double qx, double qy, double qz, double qw) {
 
   double offset_x = 0.0; // offset from object origin to robot end effector
   double offset_y = 0.0;
@@ -161,6 +167,10 @@ void save_nextcoor(double x, double y, double z) {
     nextcoor.x = check_limit( x + 0.35 + offset_x, 'x'); 
     nextcoor.y = check_limit(-z + 0.36 + offset_y, 'y');
     nextcoor.z = check_limit( y + 0.01 + offset_z, 'z');
+    nextcoor.qx = qx;
+    nextcoor.qy = qy;
+    nextcoor.qz = qz;
+    nextcoor.qw = qw;
     mutex_nextcoor.unlock();
   }
 
@@ -172,7 +182,7 @@ double init_t = 0.0;
 
 
 /***********************************************************************************************/
-/* This functions just creates a socket for TCP communication                                  */
+/* This function just creates a socket for TCP communication                                  */
 /*                                                                                             */
 /*                                                                                             */
 /*                                                                                             */
@@ -199,7 +209,7 @@ int createSocket(int port)
         printf("ERROR: Bind failed\n");
         exit(1);
     }
-    printf("Listening to Sleipner\n");
+    printf("Listening for coordinates\n");
 
     listen(sock , 3);
 
@@ -207,34 +217,29 @@ int createSocket(int port)
 }
 
 
-
-void closeSocket(int sock)
-{
-    close(sock);
-    return;
-}
-
 void sendMsg(int sock, void* msg, uint32_t msgsize)
 {
     if (write(sock, msg, msgsize) < 0)
     {
         printf("Can't send message.\n");
-        closeSocket(sock);
+        close(sock);
         exit(1);
     }
-    printf("Message sent (%d bytes).\n", msgsize);
     return;
 }
 
 /***********************************************************************************************/
-/* This function is in charge of receiving data (x, y, z predicted by SNN) through tcp socket  */
-/*                                                                                             */
+/* This function is in charge of receiving end-effector position data (x, y, z) through socket */
+/* and sending back data related to robot joint positions                                      */
 /*                                                                                             */
 /*                                                                                             */
 /*                                                                                             */
 /***********************************************************************************************/
-int get_ws_coordinates()
+int get_xyz_send_q()
 {
+
+
+
     int PORT = 2600;
     int BUFFSIZE = 512;
     char buff[BUFFSIZE];
@@ -260,8 +265,9 @@ int get_ws_coordinates()
         {
             xyz_payload *p = (xyz_payload*) buff;
 
-            save_nextcoor(p->x, p->y, p->z);
-            printf("x: %3.3f | y: %3.3f | z: %3.3f\n", p->x, p->y, p->z);
+            save_nextcoor(p->x, p->y, p->z,
+                          p->qx, p->qy, p->qz, p->qw);
+            sendMsg(csock, &joints_out, sizeof(joints_payload));
               
         }
         close(csock);
@@ -292,32 +298,13 @@ void init_maxmin_values(){
 }
 
 
-
 /***********************************************************************************************/
-/*                                                                                             */
-/*                                                                                             */
+/* The next end-effector position should not be too far away from the current one              */
+/* When it's too far, the target is modified (restricted) to prevent violent movements         */
 /*                                                                                             */
 /*                                                                                             */
 /*                                                                                             */
 /***********************************************************************************************/
-void read_csv()
-{
-  vector<string> row;
-  ifstream fin;
-  string line, word;
-  // Open an existing file
-  fin.open("examples/FakeOptiTrack.csv");
-  while(!fin.eof()){
-    getline(fin, line);
-    stringstream s(line);
-    while (getline (s, word, ',')) {
-        row.push_back (word);
-    }
-    cout << " x: " << row[0] << " y: " << row[1] << " z: " << row[2] << "\n";
-  }
-}
-
-
 double validate(double curr_coor, double next_coor){
 
     double delta = 0.10; // 10[cm]
@@ -360,21 +347,6 @@ void close_gripper(char * robot_ip) {
 
 }
 
-
-/* A new target get approved if it's different from current position by at >2mm in at least one axis */
-bool target_approval(double x_i, double y_i, double z_i, double x_f, double y_f, double z_f) {
-
-  bool flag = false;
-  double delta = 0.002;
-
-  if((abs(x_i-x_f) > delta) || (abs(y_i-y_f) > delta) || (abs(z_i-z_f) > delta)) {
-    flag = true;
-  }
-
-
-  return flag;
-}
-
 void init_panda_pva(char* robot_ip) {
 
   franka::Robot robot(robot_ip);
@@ -390,6 +362,15 @@ void init_panda_pva(char* robot_ip) {
       nextcoor.x = final_pose[12]; 
       nextcoor.y = final_pose[13];
       nextcoor.z = final_pose[14];
+
+      Eigen::Quaterniond initial_quat(Eigen::Affine3d(Eigen::Matrix4d::Map(robot_state.O_T_EE_c.data())).linear());
+      nextcoor.qx = initial_quat.x();
+      nextcoor.qy = initial_quat.y();
+      nextcoor.qz = initial_quat.z();
+      nextcoor.qw = initial_quat.w();
+
+      std::cout << "Initial pose: " << nextcoor.x << " | " << nextcoor.y << " | " << nextcoor.z << " || " << nextcoor.qx << " | " << nextcoor.qy << " | " << nextcoor.qz << " | " << nextcoor.qw << std::endl;
+
       mutex_nextcoor.unlock();
     }
 
@@ -398,42 +379,36 @@ void init_panda_pva(char* robot_ip) {
 
 }
 
+void limit_vec(Eigen::Vector3d &vec, double limit)
+{
+  const double vec_norm = vec.norm();
+  if(vec_norm > limit)
+    vec *= (limit/vec_norm);
+}
+
+Eigen::Vector3d limit_vec_calc(const Eigen::Vector3d &vec, double limit)
+{
+  const double vec_norm = vec.norm();
+  if(vec_norm > limit)
+    return vec*(limit/vec_norm);
+  
+  return vec;
+}
 
 #define PI 3.14159265
 
-std::array<double, 7> rob_joints;
-void get_sensors() {
 
-  std::array<double, 7> rj;
-  while(1){
-
-    if (mutex_sensors.try_lock()) {
-      rj = rob_joints;
-      mutex_sensors.unlock();
-    }
-    printf("q0: %3.3f ", rj[0]);
-    printf("q1: %3.3f ", rj[1]);
-    printf("q2: %3.3f ", rj[2]);
-    printf("q3: %3.3f ", rj[3]);
-    printf("q4: %3.3f ", rj[4]);
-    printf("q5: %3.3f ", rj[5]);
-    printf("q6: %3.3f ", rj[6]);
-    printf("\n");
-    usleep(100000);
-
-  }
-}
 
 void move_end_effector(char* robot_ip) {
 
-  std::cout << "Are things ready ???" << std::endl;
+  std::cout << "Are things ready ??? If so, press Enter\n" << std::endl;
   std::cin.ignore();
   
   std::cout << robot_ip << std::endl;  
 
   // Compliance parameters
   const double translational_stiffness{150.0};
-  const double rotational_stiffness{10.0};
+  const double rotational_stiffness{50.0};
   Eigen::MatrixXd stiffness(6, 6), damping(6, 6);
   stiffness.setZero();
   stiffness.topLeftCorner(3, 3) << translational_stiffness * Eigen::MatrixXd::Identity(3, 3);
@@ -472,20 +447,69 @@ void move_end_effector(char* robot_ip) {
       mutex_nextcoor.lock();
       c_target.x = validate(robot_state.O_T_EE[12], nextcoor.x);
       c_target.y = validate(robot_state.O_T_EE[13], nextcoor.y);
-      c_target.z = validate(robot_state.O_T_EE[14], nextcoor.z); 
+      c_target.z = validate(robot_state.O_T_EE[14], nextcoor.z);
+      c_target.qx = nextcoor.qx;
+      c_target.qy = nextcoor.qy;
+      c_target.qz = nextcoor.qz;
+      c_target.qw = nextcoor.qw;
       mutex_nextcoor.unlock();           
   
-      mutex_sensors.lock();      
-      rob_joints = robot_state.q;
-      mutex_sensors.unlock();        
-                 
+      // Reading joints' positions
+      joints_out.q0 = robot_state.q[0]; 
+      joints_out.q1 = robot_state.q[1]; 
+      joints_out.q2 = robot_state.q[2]; 
+      joints_out.q3 = robot_state.q[3]; 
+      joints_out.q4 = robot_state.q[4]; 
+      joints_out.q5 = robot_state.q[5]; 
+      joints_out.q6 = robot_state.q[6];
 
+      joints_out.x = robot_state.O_T_EE[12];
+      joints_out.y = robot_state.O_T_EE[13];
+      joints_out.z = robot_state.O_T_EE[14];
       
+      {
+        Eigen::Affine3d    initial_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
+        Eigen::Quaterniond orientation(initial_transform.linear());
+        joints_out.qx = orientation.x();
+        joints_out.qy = orientation.y();
+        joints_out.qz = orientation.z();
+        joints_out.qw = orientation.w();
+      }
 
-      // actual end effector positioning command
-      initial_state.O_T_EE[12] = c_target.x;
-      initial_state.O_T_EE[13] = c_target.y;
-      initial_state.O_T_EE[14] = c_target.z;
+
+      {
+        Eigen::Matrix4d trans;
+        trans.setIdentity();   // Set to Identity to make bottom row of Matrix 0,0,0,1
+        trans.block<3,3>(0,0) = Eigen::Quaterniond(c_target.qw, c_target.qx, c_target.qy, c_target.qz).toRotationMatrix();
+        trans.block<3,1>(0,3) = Eigen::Vector3d(c_target.x, c_target.y, c_target.z);
+
+        // actual end effector positioning command
+        Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
+        initial_transform = trans;
+
+        initial_state.O_T_EE[ 1] = trans(0,0);
+        initial_state.O_T_EE[ 2] = trans(1,0);
+        initial_state.O_T_EE[ 3] = trans(2,0);
+        initial_state.O_T_EE[ 4] = trans(3,0);
+
+        initial_state.O_T_EE[ 4] = trans(0,1);
+        initial_state.O_T_EE[ 5] = trans(1,1);
+        initial_state.O_T_EE[ 6] = trans(2,1);
+        initial_state.O_T_EE[ 7] = trans(3,1);
+
+        initial_state.O_T_EE[ 8] = trans(0,2);
+        initial_state.O_T_EE[ 9] = trans(1,2);
+        initial_state.O_T_EE[10] = trans(2,2);
+        initial_state.O_T_EE[11] = trans(3,2);
+
+        initial_state.O_T_EE[12] = trans(0,3);
+        initial_state.O_T_EE[13] = trans(1,3);
+        initial_state.O_T_EE[14] = trans(2,3);
+        initial_state.O_T_EE[15] = trans(3,3);
+      }
+
+      initial_state.q_d[3] = -2.699157; // first_state.q_d[3]; 
+      initial_state.q_d[6] = 0.864497; //first_state.q_d[6]; 
 
 
       // equilibrium point is the initial position
@@ -536,7 +560,196 @@ void move_end_effector(char* robot_ip) {
       return tau_d_array;
     };
 
+    // Set additional parameters always before the control loop, NEVER in the control loop!
+    // Set collision behavior.
+    // robot.setCollisionBehavior(
+    //     {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}}, {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}},
+    //     {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}}, {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}},
+    //     {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}}, {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}},
+    //     {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}}, {{20.0, 20.0, 20.0, 25.0, 25.0, 25.0}});
+
+
+    double time = 0.0;
+    Eigen::Vector3d old_dx(0,0,0);
+    Eigen::Vector3d old_x(0,0,0);
+    Eigen::Vector3d old_e(0,0,0);
+    Eigen::Vector3d ie(0,0,0);
+    double speed = 0.0;
+
+    std::array<double, 16> start_pose;
+
+    // define callback for the torque control loop
+    std::function<franka::CartesianPose(const franka::RobotState&, franka::Duration)>
+        cartesian_control_callback = [&](const franka::RobotState& robot_state,
+                                         franka::Duration period) -> franka::CartesianPose {
+
+                            
+      mutex_nextcoor.lock();
+      c_target.x = validate(robot_state.O_T_EE[12], nextcoor.x);
+      c_target.y = validate(robot_state.O_T_EE[13], nextcoor.y);
+      c_target.z = validate(robot_state.O_T_EE[14], nextcoor.z);
+      c_target.qx = nextcoor.qx;
+      c_target.qy = nextcoor.qy;
+      c_target.qz = nextcoor.qz;
+      c_target.qw = nextcoor.qw;
+      mutex_nextcoor.unlock();           
+  
+      // Reading joints' positions
+      joints_out.q0 = robot_state.q[0]; 
+      joints_out.q1 = robot_state.q[1]; 
+      joints_out.q2 = robot_state.q[2]; 
+      joints_out.q3 = robot_state.q[3]; 
+      joints_out.q4 = robot_state.q[4]; 
+      joints_out.q5 = robot_state.q[5]; 
+      joints_out.q6 = robot_state.q[6];
+
+      joints_out.x = robot_state.O_T_EE[12];
+      joints_out.y = robot_state.O_T_EE[13];
+      joints_out.z = robot_state.O_T_EE[14];
+      
+      {
+        Eigen::Affine3d    initial_transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
+        Eigen::Quaterniond orientation(initial_transform.linear());
+        joints_out.qx = orientation.x();
+        joints_out.qy = orientation.y();
+        joints_out.qz = orientation.z();
+        joints_out.qw = orientation.w();
+      }
+
+      double dt = period.toSec();
+      //std::cout << "\ndt: " << dt << std::endl;
+      
+      Eigen::Matrix4d trans;
+      trans.setIdentity();   // Set to Identity to make bottom row of Matrix 0,0,0,1
+      trans.block<3,3>(0,0) = Eigen::Quaterniond(c_target.qw, c_target.qx, c_target.qy, c_target.qz).toRotationMatrix();
+      trans.block<3,1>(0,3) = Eigen::Vector3d(c_target.x, c_target.y, c_target.z);
+
+      //const double max_ddx = 0.0000001 * (dt/0.001);
+      const double max_ddx   = 100; // 1
+      const double max_dx    = 0.01; //0.001;
+      const double max_x     = 1e-6; // 1e-6
+      const double max_ie = 100.0;
+
+      Eigen::Vector3d e(c_target.x - robot_state.O_T_EE_d[12], c_target.y - robot_state.O_T_EE_d[13], c_target.z - robot_state.O_T_EE_d[14]);
+      if(time==0.0)
+      {
+        old_e = e;
+        start_pose = robot_state.O_T_EE_d;
+      }
+
+      time += dt;
+
+      Eigen::Vector3d x(0,0,0);
+      Eigen::Vector3d dx(0,0,0);
+      Eigen::Vector3d ddx(0,0,0);
+
+      Eigen::Vector3d de = (e-old_e)/dt;
+
+      ie += e*dt;
+      const double ie_norm = ie.norm();
+      if(ie_norm > max_ie)
+        ie *= (max_ie/ie_norm);
+      else if(ie_norm < -max_ie)
+        ie *= (-max_ie/ie_norm);
+
+      if(dt > 0)
+      {
+        ddx = limit_vec_calc(1000.0 * e + 400.0*de, max_ddx); // + 0.01*ie;
+
+        dx = limit_vec_calc(dx + ddx * 0.001, max_dx);
+
+        x = limit_vec_calc(x + 0.5*(dx + old_dx)*dt, max_x);
+
+        // Eigen::Vector3d dx(x/dt);
+
+        // const double target_speed = dx.norm();
+        // const double delta_s = target_speed - speed;
+        // if(delta_s > max_ddx)
+        // {
+        //   dx = dx * ((speed+max_ddx) / target_speed);
+        // }
+        // else if(delta_s < -max_ddx)
+        // {
+        //   dx = dx * ((speed-max_ddx) / target_speed);
+        // }
+        
+        // speed = dx.norm();
+
+        // if(speed > max_dx)
+        // {
+        //   dx = dx * (max_dx / speed);
+        //   speed = dx.norm();
+        // }
+      }
+      else
+      {
+        x *= 0.0;
+        speed = 0;
+      }
+
+      // std::cout << "e: " << e << std::endl;
+      // std::cout << "x: " << x << std::endl;
+      std::cout << "\nee: " << ddx.norm() << std::endl;
+      std::cout << "de: " << dx.norm() << std::endl;
+      std::cout << "ie: " << x.norm() << std::endl;
+
+      std::array<double, 16> new_pose = start_pose;
+      // new_pose[0]  = start_pose[];
+      // new_pose[1]  = trans(1,0);
+      // new_pose[2]  = trans(2,0);
+      // new_pose[3]  = trans(3,0);
+      
+      // new_pose[4]  = trans(0,1);
+      // new_pose[5]  = trans(1,1);
+      // new_pose[6]  = trans(2,1);
+      // new_pose[7]  = trans(3,1);
+
+      // new_pose[8]  = trans(0,2);
+      // new_pose[9]  = trans(1,2);
+      // new_pose[10] = trans(2,2);
+      // new_pose[11] = trans(3,2);
+
+      new_pose[12] = robot_state.O_T_EE_d[12] + x(0);
+      new_pose[13] = robot_state.O_T_EE_d[13] + x(1);
+      new_pose[14] = robot_state.O_T_EE_d[14] + x(2);
+      // new_pose[15] = trans(3,3);
+
+      // if (time >= 10.0) {
+      //   std::cout << std::endl << "Finished motion, shutting down example" << std::endl;
+      //   return franka::MotionFinished(new_pose);
+      // }
+
+      old_dx = dx;
+      old_x = x;
+      old_e = e;
+
+      return new_pose;
+    };
+
+    //robot.control(cartesian_control_callback, franka::ControllerMode::kCartesianImpedance, true, franka::kMaxCutoffFrequency);
     robot.control(impedance_control_callback);
+
+    // std::array<double, 16> initial_pose;
+    // double time = 0.0;
+    // robot.control([&time, &initial_pose](const franka::RobotState& robot_state,
+    //                                      franka::Duration period) -> franka::CartesianPose {
+    //   time += period.toSec();
+    //   if (time == 0.0) {
+    //     initial_pose = robot_state.O_T_EE_c;
+    //   }
+    //   constexpr double kRadius = 0.3;
+    //   double angle = M_PI / 4 * (1 - std::cos(M_PI / 5.0 * time));
+    //   double delta_x = kRadius * std::sin(angle);
+    //   double delta_z = kRadius * (std::cos(angle) - 1);
+    //   std::array<double, 16> new_pose = initial_pose;
+    //   new_pose[12] += delta_x;
+    //   new_pose[14] += delta_z;
+    //   if (time >= 10.0) {
+    //     std::cout << std::endl << "Finished motion, shutting down example" << std::endl;
+    //     return franka::MotionFinished(new_pose);
+    //   }
+    //   return new_pose;
+    // });
 
 
   } catch (const franka::Exception& ex) {
@@ -560,24 +773,25 @@ int main(int argc, char** argv) {
 
   op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
 
-  std::cout << "JPRB: Hello NCS people :)\n";
+  std::cout << "Hello NCS people :)\n";
   
 
-  if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " <robot-ip>" << std::endl;
-    return -1;
-  }
+  char robot_ip[] = "172.16.0.2";
   init_maxmin_values();
 
   // When the program starts the robot 'moves' to its current position
   // This is to prevent sudden motion
-  init_panda_pva(argv[1]);
+  init_panda_pva(robot_ip);
 
-  close_gripper(argv[1]);
    
 
-  std::thread coor_process (get_ws_coordinates);
-  std::thread mot_process (move_end_effector, argv[1]);  
+  std::thread coor_process (get_xyz_send_q);
+
+
+  // close_gripper(robot_ip);
+  std::thread mot_process (move_end_effector, robot_ip); 
+
+  
   coor_process.join(); 
   printf("Stopped getting incoming data\n");
   mot_process.join();

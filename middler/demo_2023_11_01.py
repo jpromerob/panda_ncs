@@ -85,69 +85,43 @@ def set_vir_poses(angles, v_poses, presence):
 
 '''
 This function sets the camera poses based on manual readings from optitrack (using camera marker 'hat')
+
+# CAM1 -0.136	0.923	1.404	-70.909	11.156	-23.797
+# CAM2 -0.633	0.953	1.414	-57.749	-34.985	-11.712
+# CAM3 -0.701	0.938	0.554	171.656	-52.186	122.931
+
 '''
-def new_set_cam_poses():
-
-    cam_poses = np.zeros((3,6))
-
-    # Cam 1
-    cam_poses[0,0] = -0.134 # cam1:cx
-    cam_poses[0,1] = +0.925 # cam1:cy
-    cam_poses[0,2] = +1.404 # cam1:cz
-    cam_poses[0,3] = (math.pi/180)*(-68.7) # cam1:alpha
-    cam_poses[0,4] = (math.pi/180)*(26.9) # cam1:beta
-    cam_poses[0,5] = (math.pi/180)*(2.3) # cam1:gamma
-
-    # Cam 2
-    cam_poses[1,0] = -0.632 # cam2:cx
-    cam_poses[1,1] = +0.955 # cam2:cy
-    cam_poses[1,2] = +1.417 # cam2:cz
-    cam_poses[1,3] = (math.pi/180)*(-61.6) # cam2:alpha
-    cam_poses[1,4] = (math.pi/180)*(-8.3) # cam2:beta
-    cam_poses[1,5] = (math.pi/180)*(-35.3) # cam2:gamma
-
-    # Cam 3
-    cam_poses[2,0] = -0.703 # cam3:cx
-    cam_poses[2,1] = +0.942 # cam3:cy
-    cam_poses[2,2] = +0.557 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(-128.5) # cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-17.5) # cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(-109.8) # cam3:gamma
-
-    return cam_poses
-
-
-
 
 def set_cam_poses():
 
     cam_poses = np.zeros((3,6))
 
     # Cam 1
-    cam_poses[0,0] = -0.099 # cam1:cx
-    cam_poses[0,1] = 0.968 # cam1:cy
-    cam_poses[0,2] = 1.363 # cam1:cz
-    cam_poses[0,3] = (math.pi/180)*(-71.499) # cam1:alpha
-    cam_poses[0,4] = (math.pi/180)*(16.753) # cam1:beta
-    cam_poses[0,5] = (math.pi/180)*(-20.992) # cam1:gamma
+    cam_poses[0,0] = -0.136 # cam1:cx
+    cam_poses[0,1] = 0.923 # cam1:cy
+    cam_poses[0,2] = 1.404 # cam1:cz
+    cam_poses[0,3] = (math.pi/180)*(-70.909) # cam1:alpha
+    cam_poses[0,4] = (math.pi/180)*(11.156) # cam1:beta
+    cam_poses[0,5] = (math.pi/180)*(-23.797) # cam1:gamma
 
     # Cam 2
-    cam_poses[1,0] = -0.570 # cam2:cx
-    cam_poses[1,1] = 0.970 # cam2:cy
-    cam_poses[1,2] = 1.395 # cam2:cz
-    cam_poses[1,3] = (math.pi/180)*(-62.113) # cam2:alpha
-    cam_poses[1,4] = (math.pi/180)*(-42.374) # cam2:beta
-    cam_poses[1,5] = (math.pi/180)*(-6.134) # cam2:gamma
+    cam_poses[1,0] = -0.633 # cam2:cx
+    cam_poses[1,1] = 0.953 # cam2:cy
+    cam_poses[1,2] = 1.414 # cam2:cz
+    cam_poses[1,3] = (math.pi/180)*(-57.749) # cam2:alpha
+    cam_poses[1,4] = (math.pi/180)*(-34.985) # cam2:beta
+    cam_poses[1,5] = (math.pi/180)*(-11.712) # cam2:gamma
 
     # Cam 3
-    cam_poses[2,0] = -0.664 # cam3:cx
-    cam_poses[2,1] =  0.979 # cam3:cy
-    cam_poses[2,2] =  0.538 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(148.698)# cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-46.056)# cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(148.752)# cam3:gamma
+    cam_poses[2,0] = -0.701 # cam3:cx
+    cam_poses[2,1] = 0.938 # cam3:cy
+    cam_poses[2,2] = 0.554 # cam3:cz
+    cam_poses[2,3] = (math.pi/180)*(171.656) # cam3:alpha
+    cam_poses[2,4] = (math.pi/180)*(-52.186) # cam3:beta
+    cam_poses[2,5] = (math.pi/180)*(122.931) # cam3:gamma
 
     return cam_poses
+
 
 ''' Translation Matrices'''
 def get_transmats(cam_poses):
@@ -283,7 +257,7 @@ def create_mgd(v2r, v_obj_poses):
     
     return new_μ, w_Σ, [rv_1, rv_2, rv_3]
 
-def analytical(μ, Σ, presence, old_p):
+def analytical(μ, Σ, presence, old_μ, oldsence):
 
 
     mu = np.zeros(3)
@@ -313,18 +287,42 @@ def analytical(μ, Σ, presence, old_p):
         V_3 = np.zeros((3,3)) 
         μ_3 = np.zeros(3)
 
+
+
+
     if np.sum(presence)>=2:
         V_n =np.linalg.inv(V_n_p)
-        mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n
+        mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n 
+        if np.sum(presence) != np.sum(oldsence):
+            mu[0] = (mu[0] + old_μ[0])/2
+            mu[1] = (mu[1] + old_μ[1])/2
+            mu[2] = (mu[2] + old_μ[2])/2
+    else:
+        mu[0] = old_μ[0]
+        mu[1] = old_μ[1]
+        mu[2] = old_μ[2]
 
-    max_delta = 0.001
+
+    # if np.sum(presence)>=2:
+    #     V_n =np.linalg.inv(V_n_p)
+    #     mu = ((V_1 @ μ_1) + (V_2 @ μ_2) + (V_3 @ μ_3)) @ V_n 
+    #     if np.sum(presence) == 2:
+    #         mu[0] = (mu[0] + old_μ[0])/2
+    #         mu[1] = (mu[1] + old_μ[1])/2
+    #         mu[2] = (mu[2] + old_μ[2])/2
+    # else:
+    #     mu[0] = old_μ[0]
+    #     mu[1] = old_μ[1]
+    #     mu[2] = old_μ[2]
+
+    max_delta = 0.002
     for k in range(3): # for x, y, z
-        if mu[k] > old_p[k] + max_delta:
+        if mu[k] > old_μ[k] + max_delta:
             # print("Jump avoided (up)\n")
-            mu[k] = old_p[k] + max_delta
-        if mu[k] < old_p[k] - max_delta:
+            mu[k] = old_μ[k] + max_delta
+        if mu[k] < old_μ[k] - max_delta:
             # print("Jump avoided (down)\n")
-            mu[k] = old_p[k] - max_delta
+            mu[k] = old_μ[k] - max_delta
 
 
     return mu
@@ -444,6 +442,8 @@ def combiner(merge_queue, target_queue, xyz_queue, ip_address, port_nb, dvs_is_s
 
     px = np.zeros(3)
     py = np.zeros(3)
+    old_px = np.zeros(3)
+    old_py = np.zeros(3)
 
     oldsence = np.ones(3)
     presence = np.ones(3)
@@ -471,8 +471,14 @@ def combiner(merge_queue, target_queue, xyz_queue, ip_address, port_nb, dvs_is_s
                     oldsence[cam_id-1] = presence[cam_id-1]
                 
                 if dvs_is_src:
-                    px[cam_id-1] = datum[1]*320
-                    py[cam_id-1] = datum[2]*240
+                    if presence[cam_id-1] == 0:
+                        px[cam_id-1] = old_px[cam_id-1]
+                        py[cam_id-1] = old_py[cam_id-1]
+                    else:
+                        old_px[cam_id-1] = px[cam_id-1]
+                        old_py[cam_id-1] = py[cam_id-1]
+                        px[cam_id-1] = datum[1]*320
+                        py[cam_id-1] = datum[2]*240
                     r_obj_angles[:, cam_id-1] = get_angles_from_dvs(px[cam_id-1], py[cam_id-1], focl, cam_id) 
                 else:
                     r_obj_poses[:, cam_id-1] = [datum[1], datum[2], datum[3]]
@@ -496,7 +502,7 @@ def combiner(merge_queue, target_queue, xyz_queue, ip_address, port_nb, dvs_is_s
             new_μ, w_Σ, v_Σ = create_mgd(v2r, v_obj_poses)
               
             # Do predictions
-            prediction = analytical(new_μ, w_Σ, presence, prediction)
+            prediction = analytical(new_μ, w_Σ, presence, prediction, oldsence)
 
             # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
 
@@ -825,8 +831,8 @@ if __name__ == "__main__":
     if d_source == "dvs" : 
         # Mean array and covariance matrix in virtual camera space
         μ = np.array([0,0,-0.95])
-        Σ = np.array([[0.2,0,0],[0,0.2,0],[0,0,3.6]])    
-        offset = [-0.043, -0.007, 0.034]
+        Σ = np.array([[0.2,0,0],[0,0.8,0],[0,0,3.6]])    
+        offset = [-0.043, 0.050, 0.034]
         merger = multiprocessing.Process(target=combiner, args=(merge_queue, target_queue, xyz_queue, ip_address, port_nb,True,))
     if d_source == "opt" :
         # Mean array and covariance matrix in virtual camera space

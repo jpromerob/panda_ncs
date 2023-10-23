@@ -82,70 +82,36 @@ def set_vir_poses(angles, v_poses, presence):
     return v_poses
     
 
-
 '''
 This function sets the camera poses based on manual readings from optitrack (using camera marker 'hat')
 '''
-def new_set_cam_poses():
-
-    cam_poses = np.zeros((3,6))
-
-    # Cam 1
-    cam_poses[0,0] = -0.134 # cam1:cx
-    cam_poses[0,1] = +0.925 # cam1:cy
-    cam_poses[0,2] = +1.404 # cam1:cz
-    cam_poses[0,3] = (math.pi/180)*(-68.7) # cam1:alpha
-    cam_poses[0,4] = (math.pi/180)*(26.9) # cam1:beta
-    cam_poses[0,5] = (math.pi/180)*(2.3) # cam1:gamma
-
-    # Cam 2
-    cam_poses[1,0] = -0.632 # cam2:cx
-    cam_poses[1,1] = +0.955 # cam2:cy
-    cam_poses[1,2] = +1.417 # cam2:cz
-    cam_poses[1,3] = (math.pi/180)*(-61.6) # cam2:alpha
-    cam_poses[1,4] = (math.pi/180)*(-8.3) # cam2:beta
-    cam_poses[1,5] = (math.pi/180)*(-35.3) # cam2:gamma
-
-    # Cam 3
-    cam_poses[2,0] = -0.703 # cam3:cx
-    cam_poses[2,1] = +0.942 # cam3:cy
-    cam_poses[2,2] = +0.557 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(-128.5) # cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-17.5) # cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(-109.8) # cam3:gamma
-
-    return cam_poses
-
-
-
-
 def set_cam_poses():
 
     cam_poses = np.zeros((3,6))
 
     # Cam 1
-    cam_poses[0,0] = -0.099 # cam1:cx
-    cam_poses[0,1] = 0.968 # cam1:cy
-    cam_poses[0,2] = 1.363 # cam1:cz
-    cam_poses[0,3] = (math.pi/180)*(-71.499) # cam1:alpha
-    cam_poses[0,4] = (math.pi/180)*(16.753) # cam1:beta
-    cam_poses[0,5] = (math.pi/180)*(-20.992) # cam1:gamma
+    cam_poses[0,0] = -0.1315 # cam1:cx
+    cam_poses[0,1] =  0.9205# cam1:cy
+    cam_poses[0,2] =  1.40942# cam1:cz
+    cam_poses[0,3] = 107.3*(math.pi/180) # cam1:alpha
+    cam_poses[0,4] = -19.3*(math.pi/180) # cam1:beta
+    cam_poses[0,5] = -19.3*(math.pi/180) # cam1:gamma
 
     # Cam 2
-    cam_poses[1,0] = -0.570 # cam2:cx
-    cam_poses[1,1] = 0.970 # cam2:cy
-    cam_poses[1,2] = 1.395 # cam2:cz
-    cam_poses[1,3] = (math.pi/180)*(-62.113) # cam2:alpha
-    cam_poses[1,4] = (math.pi/180)*(-42.374) # cam2:beta
-    cam_poses[1,5] = (math.pi/180)*(-6.134) # cam2:gamma
+    cam_poses[1,0] = -0.6366 # cam2:cx
+    cam_poses[1,1] = 0.9461 # cam2:cy
+    cam_poses[1,2] = 1.4177 # cam2:cz
+    cam_poses[1,3] = 116.6*(math.pi/180) # cam2:alpha
+    cam_poses[1,4] = 12.05*(math.pi/180) # cam2:beta
+    cam_poses[1,5] = 37.11*(math.pi/180) # cam2:gamma
 
     # Cam 3
-    cam_poses[2,0] = -0.664 # cam3:cx
-    cam_poses[2,1] =  0.979 # cam3:cy
-    cam_poses[2,2] =  0.538 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(148.698)# cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-46.056)# cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(148.752)# cam3:gamma
+    cam_poses[2,0] =  -0.7188 # cam3:cx
+    cam_poses[2,1] =  0.97428 # cam3:cy
+    cam_poses[2,2] =  0.5817 # cam3:cz
+    cam_poses[2,3] = 54.26*(math.pi/180) # cam3:alpha
+    cam_poses[2,4] = 13*(math.pi/180) # cam3:beta
+    cam_poses[2,5] = 126.5*(math.pi/180) # cam3:gamma
 
     return cam_poses
 
@@ -354,7 +320,6 @@ def pos_server(merge_queue, cam_id):
             while buff:
                 payload_in = PayloadSleipner.from_buffer_copy(buff)       
                 presence = np.random.randint(2)
-                # print([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
                 merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
                 
                 buff = csock.recv(512)
@@ -605,11 +570,10 @@ def visualize(target_queue, bkgrnd_queue):
 
     should_resize = False
 
+    h = 1340
+    l = 2560
 
-    h = 480*2+100
-    l = 640*2+120
-
-    hs = 10
+    hs = 200
     vs = 10
     mrgn = int((l*(480*2+3*vs)/h-(640*2+hs))/2)
 
@@ -617,10 +581,8 @@ def visualize(target_queue, bkgrnd_queue):
 
     cam_shape = (480*2+3*vs,640*2+hs+2*mrgn,3)
 
-    logo = cv2.imread('NCS_640_480.png')
-    scalie = 0.9
-    ogol = cv2.resize(logo, (int(640*scalie), int(480*scalie)), interpolation = cv2.INTER_NEAREST)
-    cv2.imshow('', ogol)
+    logo = cv2.imread('NCS_1326_1646.png')
+    # image = logo
     image = np.ones(cam_shape)*255
 
     # Black background in all active subplots
@@ -638,7 +600,12 @@ def visualize(target_queue, bkgrnd_queue):
     image[0:vs,:,:] = white
     image[480*1+1*vs:480*1+2*vs,:,:] = white
     image[480*2+2*vs:480*2+3*vs:,:,:] = white
-    
+
+    # Vertical Divisions
+    image[:,0:1*mrgn,:] = white
+    image[:,640*1+1*mrgn:640*1+1*hs+1*mrgn,:] = white
+    image[:,640*2+1*hs+1*mrgn:640*2+1*hs+1*mrgn,:] = white
+
     counter = 0
     while True:
 
@@ -684,7 +651,6 @@ def visualize(target_queue, bkgrnd_queue):
         image[(480*1+2*vs):(480*2+2*vs), (1*mrgn):(640+1*mrgn),:] = bgi_1     # Bottom Left:    Cam#1
         image[(1*vs):(480+1*vs), (+1*mrgn):(640+1*mrgn),:] = bgi_2           # Top left :      Cam#2
         image[(1*vs):(480+1*vs), (640+1*hs+1*mrgn):(640*2+1*hs+1*mrgn),:] = bgi_3       # Top right :     Cam#3
-        # image[(480*1+2*vs):(480*2+2*vs), (640+1*hs+1*mrgn):(640*2+1*hs+1*mrgn),:] = logo       # Top right :     Cam#3
 
         # Draw TargetS
         color = [0, 0, 255]

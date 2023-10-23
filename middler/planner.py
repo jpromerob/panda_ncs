@@ -15,12 +15,18 @@ import time
 import multiprocessing
 from ctypes import *
 
+import sensor_api
+
 
 """ This class defines a C-like struct """
 class Coordinates(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
-                ("z", c_float)]
+                ("z", c_float),
+                ("qx", c_float),
+                ("qy", c_float),
+                ("qz", c_float),
+                ("qw", c_float)]
 
 
 class Joints(Structure):
@@ -30,7 +36,14 @@ class Joints(Structure):
                 ("q3", c_double),
                 ("q4", c_double),
                 ("q5", c_double),
-                ("q6", c_double)]
+                ("q6", c_double),
+                ("x", c_double),
+                ("y", c_double),
+                ("z", c_double),
+                ("qx", c_double),
+                ("qy", c_double),
+                ("qz", c_double),
+                ("qw", c_double)]
 
 
 def generate_coordinates():
@@ -44,27 +57,49 @@ def generate_coordinates():
         print("")
 
         idx = 0
-        max_radius = 0.10
+
+        start_time = time.time()
+
         while(True):
             
 
-            # Create a trajectory whose projections on axes x, y, and z are circles
-            delta_x = max_radius*math.sin(math.pi/180*0.5*idx)
-            delta_y = max_radius*math.sin(math.pi/180*2*idx)
-            delta_z = max_radius*math.sin(math.pi/180*idx)
+            # Measured Pose somewhere above platform
+            #panda_x = 0.135259
+            #panda_y = -0.466710
+            #panda_z = 0.239464
 
+            # Pos close to hand
+            #panda_x = 0.107630
+            #panda_y = -0.492657
+            #panda_z = 0.202441
 
-            panda_x = 0.000 + delta_x
-            panda_y = -0.500 + delta_y 
-            panda_z = 0.400 + delta_z
+            # Pos close to hand
+            amp = 0.10
+            start_height = 0.10
+            cur_height = (amp/2)*(math.sin(2.0*math.pi/(3.0) * (time.time() - start_time)) + 1) + start_height
+            panda_x = 0.107630
+            panda_y = -0.492657
+            panda_z = 0.202441 + cur_height
+            ( qx, qy, qz, qw ) = (1, 0, 0, 0)
 
+            # Pos for distance keeping
+            amp = 0.10
+            cur_height = -(amp/2)*(math.sin(2.0*math.pi/(3.0) * (time.time() - start_time)) + 1)
+
+            panda_x, panda_y, panda_z = (0.279682, -0.541643, 0.505104)
+            qx, qy, qz, qw = (0.686426, 0.301792, 0.596582, 0.28606)
+            min_x, max_x = (panda_x-0.1, panda_x)
+
+            panda_x += cur_height
+
+            # World Space
             x = panda_x - 0.35
             y = panda_z - 0.01
             z = -panda_y + 0.36
 
-            xyz_out = Coordinates(x, y, z)
+            xyz_out = Coordinates(x, y, z, qx, qy, qz, qw)
 
-            print("Sending {:f} | {:f} | {:f}".format(xyz_out.x, xyz_out.y, xyz_out.z))
+            #print("Sending {:f} | {:f} | {:f}".format(xyz_out.x, xyz_out.y, xyz_out.z))
             nsent = s.send(xyz_out)
 
 
@@ -72,10 +107,16 @@ def generate_coordinates():
             if buff:
                 joints_in = Joints.from_buffer_copy(buff)          
 
-                print("Receiving {:f} | {:f} | {:f} | {:f} | {:f} | {:f} | {:f}".format(joints_in.q0, joints_in.q1, joints_in.q2, joints_in.q3, joints_in.q4, joints_in.q5, joints_in.q6))
-            time.sleep(0.1)
+                print("Receiving {:f} | {:f} | {:f} | {:f} | {:f} | {:f} | {:f} || {:f} | {:f} | {:f} || {:f} | {:f} | {:f} | {:f}".format(
+                        joints_in.q0, joints_in.q1, joints_in.q2, joints_in.q3, joints_in.q4, joints_in.q5, joints_in.q6, 
+                        joints_in.x, joints_in.y, joints_in.z,
+                        joints_in.qx, joints_in.qy, joints_in.qz, joints_in.qw))
+                #print("Receiving {:f} | {:f} | {:f} | {:f}".format(
+                #        joints_in.qx, joints_in.qy, joints_in.qz, joints_in.qw))
+            time.sleep(0.001)
 
             idx += 2
+
 
     except AttributeError as ae:
         print("Error creating the socket: {}".format(ae))

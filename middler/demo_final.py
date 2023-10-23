@@ -86,40 +86,40 @@ def set_vir_poses(angles, v_poses, presence):
 '''
 This function sets the camera poses based on manual readings from optitrack (using camera marker 'hat')
 '''
-def new_set_cam_poses():
+def set_cam_poses():
 
     cam_poses = np.zeros((3,6))
 
     # Cam 1
-    cam_poses[0,0] = -0.134 # cam1:cx
-    cam_poses[0,1] = +0.925 # cam1:cy
-    cam_poses[0,2] = +1.404 # cam1:cz
-    cam_poses[0,3] = (math.pi/180)*(-68.7) # cam1:alpha
-    cam_poses[0,4] = (math.pi/180)*(26.9) # cam1:beta
-    cam_poses[0,5] = (math.pi/180)*(2.3) # cam1:gamma
+    cam_poses[0,0] = -0.136 # cam1:cx
+    cam_poses[0,1] = 0.921 # cam1:cy
+    cam_poses[0,2] = 1.408 # cam1:cz
+    cam_poses[0,3] = (math.pi/180)*(-68.72) # cam1:alpha
+    cam_poses[0,4] = (math.pi/180)*(7.21) # cam1:beta
+    cam_poses[0,5] = (math.pi/180)*(27.10) # cam1:gamma
 
     # Cam 2
-    cam_poses[1,0] = -0.632 # cam2:cx
-    cam_poses[1,1] = +0.955 # cam2:cy
-    cam_poses[1,2] = +1.417 # cam2:cz
-    cam_poses[1,3] = (math.pi/180)*(-61.6) # cam2:alpha
-    cam_poses[1,4] = (math.pi/180)*(-8.3) # cam2:beta
-    cam_poses[1,5] = (math.pi/180)*(-35.3) # cam2:gamma
+    cam_poses[1,0] = -0.636 # cam2:cx
+    cam_poses[1,1] = 0.949 # cam2:cy
+    cam_poses[1,2] = 1.412 # cam2:cz
+    cam_poses[1,3] = (math.pi/180)*(-66.44) # cam2:alpha
+    cam_poses[1,4] = (math.pi/180)*(-37.85) # cam2:beta
+    cam_poses[1,5] = (math.pi/180)*(-8.50) # cam2:gamma
 
     # Cam 3
-    cam_poses[2,0] = -0.703 # cam3:cx
-    cam_poses[2,1] = +0.942 # cam3:cy
-    cam_poses[2,2] = +0.557 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(-128.5) # cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-17.5) # cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(-109.8) # cam3:gamma
+    cam_poses[2,0] = -0.704 # cam3:cx
+    cam_poses[2,1] =  0.973 # cam3:cy
+    cam_poses[2,2] =  0.581 # cam3:cz
+    cam_poses[2,3] = (math.pi/180)*(-125.53)# cam3:alpha
+    cam_poses[2,4] = (math.pi/180)*(-125.18)# cam3:beta
+    cam_poses[2,5] = (math.pi/180)*(-14.39)# cam3:gamma
 
     return cam_poses
 
-
-
-
-def set_cam_poses():
+'''
+This function sets the camera poses based on manual readings from optitrack (using camera marker 'hat')
+'''
+def old_set_cam_poses():
 
     cam_poses = np.zeros((3,6))
 
@@ -354,7 +354,6 @@ def pos_server(merge_queue, cam_id):
             while buff:
                 payload_in = PayloadSleipner.from_buffer_copy(buff)       
                 presence = np.random.randint(2)
-                # print([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
                 merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
                 
                 buff = csock.recv(512)
