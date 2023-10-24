@@ -7,13 +7,14 @@ import math
 import pdb
 import os
 from geometry import *
+import argparse
 
 IP_PANDA = "172.16.222.48"
 IP_NUC = "172.16.222.46"
 
 
 
-def get_pixel_spaces_from_optitrack():
+def get_pixel_spaces_from_optitrack(disable_opt_px):
 
     cam_poses = set_cam_poses()
     r2w = get_rotmats(cam_poses)
@@ -38,6 +39,10 @@ def get_pixel_spaces_from_optitrack():
     mrg_out_socket[2].connect((IP_PANDA, 3000) )
 
     
+    plotter_address = ('172.16.222.46', 5999)
+    plotter_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+
     while True:
         data, addr = opt_in_socket.recvfrom(1024)
         values = struct.unpack('6d', data)
@@ -45,25 +50,39 @@ def get_pixel_spaces_from_optitrack():
             xyz_array[i] = round(values[i],3)
         
         ground_truth = [xyz_array[0], xyz_array[1], xyz_array[2], 1]
-        perspective = get_perspectives(c2w, ground_truth)
-        px_space_array = np.zeros(6)
-        for i in range(3):
-            angles = get_angles_from_pos(perspective[:,i])
-            px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_angles(angles, focl, pp_coor, i+1)
-            # px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_3dpose(perspective[:,i], focl, pp_coor, i+1)
-            message = f"{int(px_space_array[i*2])},{int(px_space_array[i*2+1])}"
-            vis_out_sock.sendto(message.encode(), (IP_NUC, 4331+i))
-            mrg_out_socket[i].sendall(struct.pack('ffff', (px_space_array[i*2]-320)/320, -(px_space_array[i*2+1]-240)/240, 0, 1))
-            
+        plotter_socket.sendto(struct.pack('fff', xyz_array[0], xyz_array[1], xyz_array[2]), plotter_address)
+
+        if not disable_opt_px:
+            perspective = get_perspectives(c2w, ground_truth)
+            px_space_array = np.zeros(6)
+            for i in range(3):
+                angles = get_angles_from_pos(perspective[:,i])
+                px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_angles(angles, focl, pp_coor, i+1)
+                message = f"{int(px_space_array[i*2])},{int(px_space_array[i*2+1])}"
+                # vis_out_sock.sendto(message.encode(), (IP_NUC, 4331+i))
+                mrg_out_socket[i].sendall(struct.pack('ffff', (px_space_array[i*2]-320)/320, (px_space_array[i*2+1]-240)/240, 0, 1))
+    
+    plotter_socket.close()        
 
 def get_optitrack_pose():
     os.system("./optitracker.exe")
 
+def parse_args():
 
-if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Optitracker')
+    
+    parser.add_argument('-d', '--disable-opt-px', action='store_true', help="Disable Optitrack's pixel space")
+
+    return parser.parse_args()
+        
+
+if __name__ == '__main__':
+
+
+    args = parse_args()
 
     xyz_array = multiprocessing.Array('d', [0.0,0.0,0.0])
-    receiver = multiprocessing.Process(target=get_pixel_spaces_from_optitrack)
+    receiver = multiprocessing.Process(target=get_pixel_spaces_from_optitrack, args=(args.disable_opt_px,))
     sender = multiprocessing.Process(target=get_optitrack_pose)
     receiver.start()
     sender.start()

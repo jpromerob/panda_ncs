@@ -190,7 +190,7 @@ def get_angles_from_pos(obj_pose):
 def get_dvs_from_angles(angles, focl, pp_coor, cam_id):
 
     px = pp_coor[0,cam_id-1]+int(math.tan((angles[0]*math.pi/180))*focl[0,cam_id-1])
-    py = pp_coor[1,cam_id-1]-int(math.tan((angles[1]*math.pi/180))*focl[1,cam_id-1])
+    py = pp_coor[1,cam_id-1]+int(math.tan((angles[1]*math.pi/180))*focl[1,cam_id-1])
 
 
     return px, py

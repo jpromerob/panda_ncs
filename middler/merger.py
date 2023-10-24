@@ -12,7 +12,7 @@ import struct
 from geometry import *
 from gaussians import *
 
-
+IP_NUC = "172.16.222.46"
 global cam_poses, r2w, rtl, trl, μ, Σ, offset, focl
 
 """ This class defines a C-like struct """
@@ -22,7 +22,7 @@ class PayloadSleipner(Structure):
                 ("z", c_float),
                 ("p", c_float)]
 
-class PayloadMunin(Structure):
+class PayloadPanda(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
                 ("z", c_float)]
@@ -46,14 +46,18 @@ def pos_server(merge_queue, cam_id):
         ssock.listen(3)
         print("Listening on port {:d}".format(port_nb))
 
+
+        vis_out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
         while True:
             csock, client_address = ssock.accept()
 
             buff = csock.recv(512)
             while buff:
                 payload_in = PayloadSleipner.from_buffer_copy(buff) 
-                # print([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
                 merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
+                message = f"{int(payload_in.x*320+320)},{int(payload_in.y*240+240)}"
+                vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
                 
                 buff = csock.recv(512)
             csock.close()
@@ -108,6 +112,8 @@ def combiner(merge_queue, ip_address, port_nb):
     server_addr = (ip_address, port_nb)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
+    plotter_address = ('172.16.222.46', 6000)
+    plotter_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
 
     try:
@@ -152,8 +158,10 @@ def combiner(merge_queue, ip_address, port_nb):
               
             # Do predictions
             prediction = analytical(new_μ, w_Σ, presence, prediction, oldsence)
-
-            # print("Ana. Prediction : [{:.3f}, {:.3f}, {:.3f}]".format(prediction[0], prediction[1], prediction[2]))
+            
+            x = prediction[0]+offset[0]
+            y = prediction[1]+offset[1]
+            z = prediction[2]+offset[2]
 
 
             stop = datetime.datetime.now()
@@ -166,10 +174,11 @@ def combiner(merge_queue, ip_address, port_nb):
                 counter = 0
 
             if counter%print_counter == 0:
-                print(f"({round(prediction[0]+offset[0],3)},{round(prediction[1]+offset[1],3)},{round(prediction[2]+offset[2],3)})")
+                print(f"({round(x,3)},{round(y,3)},{round(z,3)})")
 
-            payload_out = PayloadMunin(prediction[0]+offset[0], prediction[1]+offset[1], prediction[2]+offset[2])
-            nsent = s.send(payload_out)
+            # Send predicted (x,y,z) out (to robot and plotter)
+            plotter_socket.sendto(struct.pack('fff', x, y, z), plotter_address)
+            nsent = s.send(PayloadPanda(x, y, z))
 
     except AttributeError as ae:
         print("Error creating the socket: {}".format(ae))
@@ -178,9 +187,8 @@ def combiner(merge_queue, ip_address, port_nb):
     finally:
         print("Closing socket")
         s.close()
+        plotter_socket.close()
 
-
-    
     return 0
    
 
@@ -208,7 +216,8 @@ if __name__ == "__main__":
     # Mean array and covariance matrix in virtual camera space
     μ = np.array([0,0,-0.95])
     Σ = np.array([[0.2,0,0],[0,0.8,0],[0,0,3.6]])    
-    offset = [-0.043, 0.050, 0.034]
+    # offset = [-0.043, 0.050, 0.034]  
+    offset = [0,0,0]
     merger = multiprocessing.Process(target=combiner, args=(merge_queue, ip_address, port_nb,))
 
     merger.start()
