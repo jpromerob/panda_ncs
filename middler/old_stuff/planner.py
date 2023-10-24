@@ -12,18 +12,42 @@ import sys
 import math
 import random
 import time
+import multiprocessing
 from ctypes import *
+
+import sensor_api
 
 
 """ This class defines a C-like struct """
-class Payload(Structure):
+class Coordinates(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
-                ("z", c_float)]
+                ("z", c_float),
+                ("qx", c_float),
+                ("qy", c_float),
+                ("qz", c_float),
+                ("qw", c_float)]
 
 
-def main(port_nb):
-    server_addr = ('172.16.222.31', port_nb)
+class Joints(Structure):
+    _fields_ = [("q0", c_double),
+                ("q1", c_double),
+                ("q2", c_double),
+                ("q3", c_double),
+                ("q4", c_double),
+                ("q5", c_double),
+                ("q6", c_double),
+                ("x", c_double),
+                ("y", c_double),
+                ("z", c_double),
+                ("qx", c_double),
+                ("qy", c_double),
+                ("qz", c_double),
+                ("qw", c_double)]
+
+
+def generate_coordinates():
+    server_addr = ('172.16.222.31', 2600)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     try:
@@ -33,35 +57,66 @@ def main(port_nb):
         print("")
 
         idx = 0
-        max_radius = 0.10
+
+        start_time = time.time()
+
         while(True):
             
 
-            # Create a trajectory whose projections on axes x, y, and z are circles
-            delta_x = max_radius*math.sin(math.pi/180*0.5*idx)
-            delta_y = max_radius*math.sin(math.pi/180*2*idx)
-            delta_z = max_radius*math.sin(math.pi/180*idx)
+            # Measured Pose somewhere above platform
+            #panda_x = 0.135259
+            #panda_y = -0.466710
+            #panda_z = 0.239464
+
+            # Pos close to hand
+            #panda_x = 0.107630
+            #panda_y = -0.492657
+            #panda_z = 0.202441
+
+            # Pos close to hand
+            amp = 0.10
+            start_height = 0.10
+            cur_height = (amp/2)*(math.sin(2.0*math.pi/(3.0) * (time.time() - start_time)) + 1) + start_height
+            panda_x = 0.107630
+            panda_y = -0.492657
+            panda_z = 0.202441 + cur_height
+            ( qx, qy, qz, qw ) = (1, 0, 0, 0)
+
+            # Pos for distance keeping
+            amp = 0.10
+            cur_height = -(amp/2)*(math.sin(2.0*math.pi/(3.0) * (time.time() - start_time)) + 1)
+
+            panda_x, panda_y, panda_z = (0.279682, -0.541643, 0.505104)
+            qx, qy, qz, qw = (0.686426, 0.301792, 0.596582, 0.28606)
+            min_x, max_x = (panda_x-0.1, panda_x)
+
+            panda_x += cur_height
+
+            # World Space
+            x = panda_x - 0.35
+            y = panda_z - 0.01
+            z = -panda_y + 0.36
+
+            xyz_out = Coordinates(x, y, z, qx, qy, qz, qw)
+
+            #print("Sending {:f} | {:f} | {:f}".format(xyz_out.x, xyz_out.y, xyz_out.z))
+            nsent = s.send(xyz_out)
 
 
-            panda_x = 0.400 + delta_x
-            panda_y = 0.000 + delta_y 
-            panda_z = 0.400 + delta_z
+            buff = s.recv(sizeof(Joints))
+            if buff:
+                joints_in = Joints.from_buffer_copy(buff)          
 
-            x = panda_x - 0.35 + 0.10
-            y = panda_z - 0.01 - 0.20
-            z = -panda_y + 0.36 + 0.20
+                print("Receiving {:f} | {:f} | {:f} | {:f} | {:f} | {:f} | {:f} || {:f} | {:f} | {:f} || {:f} | {:f} | {:f} | {:f}".format(
+                        joints_in.q0, joints_in.q1, joints_in.q2, joints_in.q3, joints_in.q4, joints_in.q5, joints_in.q6, 
+                        joints_in.x, joints_in.y, joints_in.z,
+                        joints_in.qx, joints_in.qy, joints_in.qz, joints_in.qw))
+                #print("Receiving {:f} | {:f} | {:f} | {:f}".format(
+                #        joints_in.qx, joints_in.qy, joints_in.qz, joints_in.qw))
+            time.sleep(0.001)
 
-            payload_out = Payload(x, y, z)
-            # Sending x=-0.223331, y=0.208845, z=1.060253
+            idx += 2
 
-            print("Sending x={:f}, y={:f}, z={:f}".format(payload_out.x, payload_out.y, payload_out.z))
-            nsent = s.send(payload_out)
-            # Alternative: s.sendall(...): coontinues to send data until either
-            # all data has been sent or an error occurs. No return value.
-            # print("Sent {:d} bytes".format(nsent))
-            time.sleep(0.01)
-
-            idx += 1
 
     except AttributeError as ae:
         print("Error creating the socket: {}".format(ae))
@@ -72,6 +127,11 @@ def main(port_nb):
         s.close()
 
 
+
+
 if __name__ == "__main__":
-    port_nb = int(sys.argv[1])
-    main(port_nb)
+    
+    coor_process = multiprocessing.Process(target=generate_coordinates, args=())
+
+    coor_process.start()   
+    coor_process.join()

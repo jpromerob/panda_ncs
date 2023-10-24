@@ -686,10 +686,6 @@ def visualize(target_queue, bkgrnd_queue):
 
     cam_shape = (480*2+3*vs,640*2+hs+2*mrgn,3)
 
-    logo = cv2.imread('NCS_640_480.png')
-    scalie = 0.9
-    ogol = cv2.resize(logo, (int(640*scalie), int(480*scalie)), interpolation = cv2.INTER_NEAREST)
-    cv2.imshow('', ogol)
     image = np.ones(cam_shape)*255
 
     # Black background in all active subplots

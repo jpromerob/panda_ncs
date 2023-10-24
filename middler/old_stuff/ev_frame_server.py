@@ -29,6 +29,7 @@ from PIL import Image as im
 
 CAMERA_SHAPE = (640, 480)
 
+
 def send_tensors(sockets, tensors):
     for i in range(len(sockets)):
         tensor = tensors[i]
@@ -105,8 +106,8 @@ def predictor(
         presence = PresenceModel(threshold=200).to("cuda:0")
         streams = [
             UDPInput(
-                torch.Size((640, 480)), device="cpu", port=port#, sum_events=True
-            ).start_stream()
+                torch.Size((640, 480)), device="cuda:0", port=port, sum_events=True
+            ).start()
             for port in ports_in
         ]
 
@@ -117,7 +118,7 @@ def predictor(
             if t_1 >= t_0 + interval:
                 t_0 = t_1
                 tensors = [
-                        torch.tensor(s.read(), device="cuda:0").view(CAMERA_SHAPE[0], CAMERA_SHAPE[1]) for s in streams
+                    s.read().view(CAMERA_SHAPE[0], CAMERA_SHAPE[1]) for s in streams
                 ]
 
 
@@ -158,9 +159,6 @@ def predictor(
 
 
 def main(args):
-
-    multiprocessing.set_start_method('spawn')
-
     logging.getLogger().setLevel(args.logging)
 
     interval = args.interval / 1000  # ms to seconds
