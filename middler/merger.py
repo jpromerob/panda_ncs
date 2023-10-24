@@ -215,9 +215,9 @@ if __name__ == "__main__":
 
     # Mean array and covariance matrix in virtual camera space
     μ = np.array([0,0,-0.95])
-    Σ = np.array([[0.2,0,0],[0,0.8,0],[0,0,3.6]])    
+    Σ = np.array([[0.1,0,0],[0,0.1,0],[0,0,3.6]])    
     # offset = [-0.043, 0.050, 0.034]  
-    offset = [0,0,0]
+    offset = [-0.015,0.010,0.010]
     merger = multiprocessing.Process(target=combiner, args=(merge_queue, ip_address, port_nb,))
 
     merger.start()
