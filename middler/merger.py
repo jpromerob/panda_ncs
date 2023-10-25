@@ -13,7 +13,7 @@ from geometry import *
 from gaussians import *
 
 IP_NUC = "172.16.222.46"
-global cam_poses, r2w, rtl, trl, μ, Σ, offset, focl
+global cam_poses, focl, r2w, rtl, trl
 
 """ This class defines a C-like struct """
 class PayloadSleipner(Structure):
@@ -79,6 +79,9 @@ def pos_server(merge_queue, cam_id):
 
 def combiner(merge_queue, ip_address, port_nb):
 
+    time.sleep(1)
+    μ, Σ, offset = update_gaussians([1,1,1])
+
     v_poses = np.zeros((3,6))
 
     r_obj_poses = np.zeros((3,3))       
@@ -92,6 +95,7 @@ def combiner(merge_queue, ip_address, port_nb):
     w_Σ = np.zeros((3,3,3))
 
     v_Σ = np.zeros((3,3,3))
+   
 
     # current Σ in 'virtual camera space' for cams 1|2|3
     for k in range(3):
@@ -152,6 +156,8 @@ def combiner(merge_queue, ip_address, port_nb):
             # Get Rotation Matrices: virtual-cam to real-cam 
             v2r = get_rotmats(v_poses)
             v2r = v2r[0:3,0:3,:]
+
+            μ, Σ, offset = update_gaussians(presence)
             
             # Create Multivariate Gaussian Distributions
             new_μ, w_Σ, v_Σ = create_mgd(v2r, r2w, trl, μ, Σ, v_obj_poses)
@@ -192,6 +198,71 @@ def combiner(merge_queue, ip_address, port_nb):
     return 0
    
 
+def parse_paramerge_cfg():
+
+
+    file_path = 'paramerge.cfg'
+
+    # Define a dictionary to store the parameter values
+    parameters = {}
+
+    # Open and read the config file
+    with open(file_path, 'r') as file:
+        for line in file:
+            key, value = line.strip().split(': ')
+            parameters[key] = float(value)
+
+    # Extract values for the parameters
+    return parameters
+
+
+
+def parse_params():
+    
+    global μ, Σ, offset
+
+    while(True):
+        parameters = parse_paramerge_cfg()
+        pm[0] = parameters['μ_x']
+        pm[1] = parameters['μ_y']
+        pm[2] = parameters['μ_z']
+        pm[3] = parameters['Σ_x']
+        pm[4] = parameters['Σ_y']
+        pm[5] = parameters['Σ_z']
+        pm[6] = parameters['o_x_0']
+        pm[7] = parameters['o_y_0']
+        pm[8] = parameters['o_z_0']
+        pm[9] =  parameters['o_x_1']
+        pm[10] = parameters['o_y_1']
+        pm[11] = parameters['o_z_1']
+        pm[12] = parameters['o_x_2']
+        pm[13] = parameters['o_y_2']
+        pm[14] = parameters['o_z_2']
+        pm[15] = parameters['o_x_3']
+        pm[16] = parameters['o_y_3']
+        pm[17] = parameters['o_z_3']
+        time.sleep(1)
+
+def update_gaussians(presence):
+
+    μ = np.array([pm[0], pm[1], pm[2]])
+    Σ = np.array([[pm[3],0,0],[0,pm[4],0],[0,0,pm[5]]])
+    if sum(presence) == 3:
+        offset = [pm[6],pm[7],pm[8]]
+    else:
+        if sum(presence)==2:
+            if presence[0]==0:
+                offset = [pm[9],pm[10],pm[11]]
+            elif presence[1]==0:
+                offset = [pm[12],pm[13],pm[14]]
+            elif presence[2]==0:
+                offset = [pm[15],pm[16],pm[17]]
+        else:
+            offset = [0,0,0]
+
+    return μ, Σ, offset
+
+
 
 if __name__ == "__main__":
     
@@ -206,6 +277,10 @@ if __name__ == "__main__":
     r2w = get_rotmats(cam_poses)
     r2w = r2w[0:3,0:3,:]
     trl = get_transmats(cam_poses)
+    
+
+
+    pm = multiprocessing.Array('d', [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0])
 
 
     pos_cam_1 = multiprocessing.Process(target=pos_server, args=(merge_queue,1,))
@@ -213,24 +288,21 @@ if __name__ == "__main__":
     pos_cam_3 = multiprocessing.Process(target=pos_server, args=(merge_queue,3,))
 
 
-    # Mean array and covariance matrix in virtual camera space
-    μ = np.array([0,0,-0.95])
-    Σ = np.array([[0.1,0,0],[0,0.1,0],[0,0,3.6]])    
-    # offset = [-0.043, 0.050, 0.034]  
-    offset = [-0.015,0.010,0.010]
+    loader = multiprocessing.Process(target=parse_params)
     merger = multiprocessing.Process(target=combiner, args=(merge_queue, ip_address, port_nb,))
 
+    loader.start()
     merger.start()
 
     pos_cam_1.start()
     pos_cam_2.start()
     pos_cam_3.start()
 
-
-    merger.join()
-
     pos_cam_1.join()
     pos_cam_2.join()
     pos_cam_3.join()
+
+    merger.join()
+    loader.join()
 
 

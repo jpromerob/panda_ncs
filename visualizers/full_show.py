@@ -67,6 +67,7 @@ def visualize_data(args):
 
 
     red = (0, 0, 255) 
+    ring_th = 5
     with aestream.UDPInput((640, 480), device = 'cpu', port=args.port1) as stream1:
         with aestream.UDPInput((640, 480), device = 'cpu', port=args.port2) as stream2:
             with aestream.UDPInput((640, 480), device = 'cpu', port=args.port3) as stream3:
@@ -83,15 +84,15 @@ def visualize_data(args):
                     
                     cx = int((mgh+xy_array[0])*args.scale)
                     cy = int((mgv+480+mgi+xy_array[1])*args.scale)
-                    cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=2)
+                    cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=ring_th)
 
                     cx = int((mgh+xy_array[2])*args.scale)
                     cy = int((mgv+xy_array[3])*args.scale)
-                    cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=2)
+                    cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=ring_th)
 
                     cx = int((mgh+mgi+640+xy_array[4])*args.scale)
                     cy = int((mgv+xy_array[5])*args.scale)
-                    cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=2)
+                    cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=ring_th)
 
                     cv2.imshow(window_name, image)
                     cv2.waitKey(1)

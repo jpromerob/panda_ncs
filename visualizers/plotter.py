@@ -36,9 +36,26 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, axs):
     while not xyz_opt.q.empty():
         xyz_opt.xyz = xyz_opt.q.get(False)
 
-    e_x = 1000*abs(xyz_ncs.xyz[0]-xyz_opt.xyz[0])
-    e_y = 1000*abs(xyz_ncs.xyz[1]-xyz_opt.xyz[1])
-    e_z = 1000*abs(xyz_ncs.xyz[2]-xyz_opt.xyz[2])
+    e_x = round(1000*abs(xyz_ncs.xyz[0]-xyz_opt.xyz[0]),1)
+    e_y = round(1000*abs(xyz_ncs.xyz[1]-xyz_opt.xyz[1]),1)
+    e_z = round(1000*abs(xyz_ncs.xyz[2]-xyz_opt.xyz[2]),1)
+
+    if xyz_ncs.xyz[0] >= xyz_opt.xyz[0]:
+        e_x_sign = "+"
+    else:
+        e_x_sign = "-"
+
+    if xyz_ncs.xyz[1] >= xyz_opt.xyz[1]:
+        e_y_sign = "+"
+    else:
+        e_y_sign = "-"
+
+    if xyz_ncs.xyz[2] >= xyz_opt.xyz[2]:
+        e_z_sign = "+"
+    else:
+        e_z_sign = "-"
+
+    e_full = round(math.sqrt(e_x**2+e_y**2+e_z**2)/3,1)
 
     # Add x and y to lists
     t.append(datetime.datetime.now().strftime('%H:%M:%S.%f'))
@@ -64,11 +81,11 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, axs):
 
     txt_x = txt_y = txt_z = "No signal"
     if xyz_ncs.x[-1] != -100:
-        txt_x = "x = {:.3f} [m] (±{:.3f} [mm])".format(xyz_ncs.x[-1], e_x) 
+        txt_x = f"x = {round(xyz_ncs.x[-1],3)} [m] ({e_x_sign}{e_x} [mm])"
     if xyz_ncs.y[-1] != -100:
-        txt_y = "y = {:.3f} [m] (±{:.3f} [mm])".format(xyz_ncs.y[-1], e_y) 
+        txt_y = f"y = {round(xyz_ncs.y[-1],3)} [m] ({e_y_sign}{e_y} [mm])"
     if xyz_ncs.z[-1] != -100:
-        txt_z = "z = {:.3f} [m] (±{:.3f} [mm])".format(xyz_ncs.z[-1], e_z) 
+        txt_z = f"z = {round(xyz_ncs.z[-1],3)} [m] ({e_z_sign}{e_z} [mm])"
 
     # Draw x and y lists
     axs[0].clear()
@@ -95,7 +112,7 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, axs):
     axs[2].set_ylim([0.5,1.5])
     axs[2].set_ylabel('z')
 
-    axs[0].set_title("Object Position in Workspace", fontsize='xx-large')
+    axs[0].set_title(f"Object Position in Workspace (e={e_full}[mm])", fontsize='xx-large')
 
 
 
