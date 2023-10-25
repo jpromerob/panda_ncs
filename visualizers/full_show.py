@@ -62,10 +62,11 @@ def visualize_data(args):
     mgi = 20
     mgv = 40
     radius = 10
-    frame = np.zeros((640*2+mgh*2+mgi,480*2+mgv*2+mgi,3))
-    marker = np.zeros((2*radius+1, 2*radius+1, 3))
+    frame = np.zeros((640*2+mgh*2+mgi,480*2+mgv*2+mgi,3), dtype=np.uint8)
+    marker = np.zeros((2*radius+1, 2*radius+1, 3), dtype=np.uint8)
 
 
+    ncs_logo = cv2.imread('ncs_logo_640x480.png') 
     red = (0, 0, 255) 
     ring_th = 5
     with aestream.UDPInput((640, 480), device = 'cpu', port=args.port1) as stream1:
@@ -78,7 +79,7 @@ def visualize_data(args):
                     frame[mgh+0:mgh+640,mgv+0:mgv+480,1] =  stream2.read() # green
                     frame[mgh+mgi+640:mgh+mgi+640*2,mgv+0:mgv+480,1:3] = stream3.read()[:,:,np.newaxis] # yellow
 
-                    
+                    frame[mgh+mgi+640:mgh+mgi+640*2,mgv+mgi+480:mgv+mgi+480*2,:] = ncs_logo.transpose(1,0,2)
 
                     image = cv2.resize(frame.transpose(1,0,2), (math.ceil((640*2+mgh*2+mgi)*args.scale),math.ceil((480*2+mgv*2+mgi)*args.scale)), interpolation = cv2.INTER_AREA)
                     

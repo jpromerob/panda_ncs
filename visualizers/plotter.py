@@ -27,38 +27,47 @@ class xyz_estimate:
 ##############################################################################################################################  
 
 # This function is called periodically from FuncAnimation
-def rt_xyz(i, xyz_ncs, xyz_opt, t, axs):
+def rt_xyz(i, xyz_ncs, xyz_opt, t, e, axs):
 
-
+    xyz_ncs.xyz = [-100,-100,-100]
     while not xyz_ncs.q.empty():
         xyz_ncs.xyz = xyz_ncs.q.get(False)
 
+    xyz_opt.xyz = [-100,-100,-100]
     while not xyz_opt.q.empty():
         xyz_opt.xyz = xyz_opt.q.get(False)
 
-    e_x = round(1000*abs(xyz_ncs.xyz[0]-xyz_opt.xyz[0]),1)
-    e_y = round(1000*abs(xyz_ncs.xyz[1]-xyz_opt.xyz[1]),1)
-    e_z = round(1000*abs(xyz_ncs.xyz[2]-xyz_opt.xyz[2]),1)
 
-    if xyz_ncs.xyz[0] >= xyz_opt.xyz[0]:
-        e_x_sign = "+"
-    else:
-        e_x_sign = "-"
+    e_x = e_y = e_z = 0.000
+    e_x_sign = e_y_sign = e_z_sign = ""
+    if xyz_opt.xyz[0] != -100 and xyz_ncs.xyz[0] != -100:
+        e_x = round(1000*abs(xyz_ncs.xyz[0]-xyz_opt.xyz[0]),1)
+        if xyz_ncs.xyz[0] >= xyz_opt.xyz[0]:
+            e_x_sign = "+"
+        else:
+            e_x_sign = "-"
+    if xyz_opt.xyz[1] != -100 and xyz_ncs.xyz[1] != -100:
+        e_y = round(1000*abs(xyz_ncs.xyz[1]-xyz_opt.xyz[1]),1)
+        if xyz_ncs.xyz[1] >= xyz_opt.xyz[1]:
+            e_y_sign = "+"
+        else:
+            e_y_sign = "-"
+    if xyz_opt.xyz[2] != -100 and xyz_ncs.xyz[2] != -100:
+        e_z = round(1000*abs(xyz_ncs.xyz[2]-xyz_opt.xyz[2]),1)
+        if xyz_ncs.xyz[2] >= xyz_opt.xyz[2]:
+            e_z_sign = "+"
+        else:
+            e_z_sign = "-"
 
-    if xyz_ncs.xyz[1] >= xyz_opt.xyz[1]:
-        e_y_sign = "+"
-    else:
-        e_y_sign = "-"
 
-    if xyz_ncs.xyz[2] >= xyz_opt.xyz[2]:
-        e_z_sign = "+"
-    else:
-        e_z_sign = "-"
 
-    e_full = round(math.sqrt(e_x**2+e_y**2+e_z**2)/3,1)
+
 
     # Add x and y to lists
     t.append(datetime.datetime.now().strftime('%H:%M:%S.%f'))
+    
+    e_full = round(math.sqrt(e_x**2+e_y**2+e_z**2)/3,1)
+    e.append(e_full)
 
     xyz_ncs.x.append(xyz_ncs.xyz[0])
     xyz_ncs.y.append(xyz_ncs.xyz[1])
@@ -70,6 +79,7 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, axs):
 
     # Limit x and y lists to 100 items
     t = t[-100:]
+    e = e[-100:]
 
     xyz_ncs.x = xyz_ncs.x[-100:]
     xyz_ncs.y = xyz_ncs.y[-100:]
@@ -79,13 +89,26 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, axs):
     xyz_opt.y = xyz_opt.y[-100:]
     xyz_opt.z = xyz_opt.z[-100:]
 
-    txt_x = txt_y = txt_z = "No signal"
+    txt_x = txt_y = txt_z = txt_e = "No signal"
+
     if xyz_ncs.x[-1] != -100:
-        txt_x = f"x = {round(xyz_ncs.x[-1],3)} [m] ({e_x_sign}{e_x} [mm])"
+        x_value = round(xyz_ncs.x[-1], 3)
+        e_x_value = round(e_x, 3)
+        txt_x = f"x = {x_value:.3f} [m] ({e_x_sign}{e_x_value:.1f} [mm])"
+
     if xyz_ncs.y[-1] != -100:
-        txt_y = f"y = {round(xyz_ncs.y[-1],3)} [m] ({e_y_sign}{e_y} [mm])"
+        y_value = round(xyz_ncs.y[-1], 3)
+        e_y_value = round(e_y, 3)
+        txt_y = f"y = {y_value:.3f} [m] ({e_y_sign}{e_y_value:.1f} [mm])"
+
     if xyz_ncs.z[-1] != -100:
-        txt_z = f"z = {round(xyz_ncs.z[-1],3)} [m] ({e_z_sign}{e_z} [mm])"
+        z_value = round(xyz_ncs.z[-1], 3)
+        e_z_value = round(e_z, 3)
+        txt_z = f"z = {z_value:.3f} [m] ({e_z_sign}{e_z_value:.1f} [mm])"
+
+    if e[-1] != -100:
+        e_full_value = round(e_full, 3)
+        txt_e = f"e = {e_full_value:.1f} [mm]"
 
     # Draw x and y lists
     axs[0].clear()
@@ -112,14 +135,22 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, axs):
     axs[2].set_ylim([0.5,1.5])
     axs[2].set_ylabel('z')
 
-    axs[0].set_title(f"Object Position in Workspace (e={e_full}[mm])", fontsize='xx-large')
+    
+    axs[3].clear()
+    axs[3].plot(t, e, color='k')
+    axs[3].text(t[0], 20, txt_e, fontsize='xx-large')
+    axs[3].xaxis.set_visible(False)
+    axs[3].set_ylim([0,25])
+    axs[3].set_ylabel('e')
+
+    axs[0].set_title(f"Object Position in Workspace", fontsize='xx-large')
 
 
 
 def oscilloscope(xyz_ncs_queue, xyz_opt_queue):
 
     # Create figure for plotting
-    fig, axs = plt.subplots(3, figsize=(8.72, 6.18))
+    fig, axs = plt.subplots(4, figsize=(8.72, 6.18))
     fig.canvas.manager.set_window_title('World Space')
 
 
@@ -128,14 +159,15 @@ def oscilloscope(xyz_ncs_queue, xyz_opt_queue):
     t = []
     xyz_ncs = xyz_estimate(xyz_ncs_queue)
     xyz_opt = xyz_estimate(xyz_opt_queue)
+    e = []
 
     # Set up plot to call rt_xyz() function periodically
-    ani = animation.FuncAnimation(fig, rt_xyz, fargs=(xyz_ncs, xyz_opt, t, axs), interval=1)
+    ani = animation.FuncAnimation(fig, rt_xyz, fargs=(xyz_ncs, xyz_opt, t, e, axs), interval=1)
     plt.show()
 
 
 
-def get_xyz(xyz_ncs_queue, port_xyz_ncs):
+def get_xyz(xyz_queue, port_xyz_ncs):
 
     # Receiver address and port
     receiver_address = (IP_NUC, port_xyz_ncs)
@@ -150,7 +182,7 @@ def get_xyz(xyz_ncs_queue, port_xyz_ncs):
 
         # Unpack the received data as three float values
         values = struct.unpack('fff', data)
-        xyz_ncs_queue.put([values[0], values[1], values[2]])
+        xyz_queue.put([values[0], values[1], values[2]])
 
 
     # Close the socket
