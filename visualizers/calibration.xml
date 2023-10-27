@@ -12,7 +12,7 @@
             <attr key="maxDataBacklog" type="int">5</attr>
             <attr key="moduleLibrary" type="string">dv_output_net_tcp_server</attr>
             <attr key="portNumber" type="int">38759</attr>
-            <attr key="running" type="bool">false</attr>
+            <attr key="running" type="bool">true</attr>
             <attr key="timeout" type="long">0</attr>
             <node name="inputs" path="/mainloop/_visualizer_accumulator___frames_2cfca77807a74bef9f646f3501fb43fd/inputs/">
                 <node name="output0" path="/mainloop/_visualizer_accumulator___frames_2cfca77807a74bef9f646f3501fb43fd/inputs/output0/">

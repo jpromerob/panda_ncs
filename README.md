@@ -30,5 +30,5 @@ Set 'activated' mode (using black button on desk)
 ```
 cd /opt/libfranka/build
 sudo cmake --build .
-./panda_ncs/xyz_follower "172.16.0.2"
+./panda_ncs/follower "172.16.0.2" 1
 ```

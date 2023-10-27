@@ -26,7 +26,8 @@ target_link_libraries(ncs_common PUBLIC Franka::Franka Eigen3::Eigen3)
 
 set(NCSS
   xyz_follower
-  smooth_follower
+  follower
+  tcp_follower
 )
 
 foreach(ncs ${NCSS})

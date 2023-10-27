@@ -162,7 +162,7 @@ def oscilloscope(xyz_ncs_queue, xyz_opt_queue):
     e = []
 
     # Set up plot to call rt_xyz() function periodically
-    ani = animation.FuncAnimation(fig, rt_xyz, fargs=(xyz_ncs, xyz_opt, t, e, axs), interval=1)
+    ani = animation.FuncAnimation(fig, rt_xyz, fargs=(xyz_ncs, xyz_opt, t, e, axs), interval=20)
     plt.show()
 
 

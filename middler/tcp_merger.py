@@ -36,28 +36,41 @@ def pos_server(merge_queue, cam_id):
 
 
     port_nb = 3000 + cam_id%3 # cam #1 --> 3001 | cam #2 --> 3002 | cam #3 --> 3000
-
-
-
     server_addr = ('172.16.222.48', port_nb)
-    ssock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    ssock.bind(server_addr)
-    print("Listening on port {:d}".format(port_nb))
+    ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    print("Socket created")
+
+    try:
+        # bind the server socket and listen
+        ssock.bind(server_addr)
+        ssock.listen(3)
+        print("Listening on port {:d}".format(port_nb))
 
 
-    vis_out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        vis_out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    while True:
+        while True:
+            csock, client_address = ssock.accept()
 
-        data, addr = ssock.recvfrom(2048)
+            buff = csock.recv(512)
+            while buff:
+                payload_in = PayloadSleipner.from_buffer_copy(buff) 
+                merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
+                message = f"{int(payload_in.x*320+320)},{int(payload_in.y*240+240)}"
+                vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
+                
+                buff = csock.recv(512)
+            csock.close()
 
-        payload_in = PayloadSleipner.from_buffer_copy(data) 
-        merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
-        message = f"{int(payload_in.x*320+320)},{int(payload_in.y*240+240)}"
-        vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
-        
-
-    ssock.close()
+    except AttributeError as ae:
+        print("Error creating the socket: {}".format(ae))
+    except socket.error as se:
+        print("Exception on socket: {}".format(se))
+    except KeyboardInterrupt:
+        ssock.close()
+    finally:
+        print("Closing socket")
+        ssock.close()
 
 
 ##############################################################################################################################

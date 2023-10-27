@@ -1,4 +1,3 @@
-
 import aestream
 import time
 import cv2
@@ -62,11 +61,39 @@ def visualize_data(args):
     mgi = 20
     mgv = 40
     radius = 10
-    frame = np.zeros((640*2+mgh*2+mgi,480*2+mgv*2+mgi,3), dtype=np.uint8)
+    fth = 4 # frame thickness
+    layout = np.zeros((640*2+mgh*2+mgi,480*2+mgv*2+mgi,3), dtype=np.uint8)
+
+    # Top Margin (for Quadrants)
+    layout[mgh-fth:mgh+640+fth,mgv-fth:mgv,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Top-Left
+    layout[mgh+mgi+640-fth:mgh+mgi+640*2+fth,mgv-fth:mgv,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Top-Right
+    layout[mgh-fth:mgh+640+fth,mgv+mgi+480-fth:mgv+mgi+480,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Bottom-Left
+    layout[mgh+mgi+640-fth:mgh+mgi+640*2+fth,mgv+mgi+480-fth:mgv+mgi+480,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Bottom-Right
+
+    # Bottom Margin (for Quadrants)
+    layout[mgh-fth:mgh+640+fth,mgv+480:mgv+480+fth,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Top-Left
+    layout[mgh+mgi+640-fth:mgh+mgi+640*2+fth,mgv+480:mgv+480+fth,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Top-Right
+    layout[mgh-fth:mgh+640+fth,mgv+mgi+480*2:mgv+mgi+480*2+fth,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Bottom-Left
+    layout[mgh+mgi+640-fth:mgh+mgi+640*2+fth,mgv+mgi+480*2:mgv+mgi+480*2+fth,:] = 255*np.ones((640+2*fth,fth,3), dtype=np.uint8) # Quadrant Bottom-Right
+
+    # Left Margin (for Quadrants)
+    layout[mgh-fth:mgh,mgv-fth:mgv+480+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Top-Left
+    layout[mgh+mgi+640-fth:mgh+mgi+640,mgv-fth:mgv+480+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Top-Right
+    layout[mgh-fth:mgh,mgv+mgi+480-fth:mgv+mgi+480*2+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Bottom-Left
+    layout[mgh+mgi+640-fth:mgh+mgi+640,mgv+mgi+480-fth:mgv+mgi+480*2+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Bottom-Right
+
+    # Right Margin (for Quadrants)
+    layout[mgh+640:mgh+640+fth,mgv-fth:mgv+480+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Top-Left
+    layout[mgh+mgi+640*2:mgh+mgi+640*2+fth,mgv-fth:mgv+480+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Top-Right
+    layout[mgh+640:mgh+640+fth,mgv+mgi+480-fth:mgv+mgi+480*2+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Bottom-Left
+    layout[mgh+mgi+640*2:mgh+mgi+640*2+fth,mgv+mgi+480-fth:mgv+mgi+480*2+fth,:]= 255*np.ones((fth,480+2*fth,3), dtype=np.uint8) # Quadrant Bottom-Right
+
+    frame = layout
     marker = np.zeros((2*radius+1, 2*radius+1, 3), dtype=np.uint8)
 
 
     ncs_logo = cv2.imread('ncs_logo_640x480.png') 
+
     red = (0, 0, 255) 
     ring_th = 5
     with aestream.UDPInput((640, 480), device = 'cpu', port=args.port1) as stream1:
@@ -75,9 +102,9 @@ def visualize_data(args):
                 
                 while True:
 
-                    frame[mgh+0:mgh+640,mgv+mgi+480:mgv+mgi+480*2,0:2] = stream1.read()[:,:,np.newaxis] # cyan
-                    frame[mgh+0:mgh+640,mgv+0:mgv+480,1] =  stream2.read() # green
-                    frame[mgh+mgi+640:mgh+mgi+640*2,mgv+0:mgv+480,1:3] = stream3.read()[:,:,np.newaxis] # yellow
+                    frame[mgh+0:mgh+640,mgv+mgi+480:mgv+mgi+480*2,0:2] = 255*stream1.read()[:,:,np.newaxis] # cyan
+                    frame[mgh+0:mgh+640,mgv+0:mgv+480,1] =  255*stream2.read() # green
+                    frame[mgh+mgi+640:mgh+mgi+640*2,mgv+0:mgv+480,1:3] = 255*stream3.read()[:,:,np.newaxis] # yellow
 
                     frame[mgh+mgi+640:mgh+mgi+640*2,mgv+mgi+480:mgv+mgi+480*2,:] = ncs_logo.transpose(1,0,2)
 
@@ -143,6 +170,7 @@ def parse_args():
         
 
 if __name__ == '__main__':
+
 
 
     args = parse_args()

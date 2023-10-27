@@ -59,12 +59,21 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
     vis_out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
     mrg_out_socket = []
-    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    mrg_out_socket[0].connect((IP_PANDA, 3001) )
-    mrg_out_socket[1].connect((IP_PANDA, 3002) )
-    mrg_out_socket[2].connect((IP_PANDA, 3000) )
+    mrg_address = []
+    # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+    # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+    # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+    # mrg_out_socket[0].connect((IP_PANDA, 3001) )
+    # mrg_out_socket[1].connect((IP_PANDA, 3002) )
+    # mrg_out_socket[2].connect((IP_PANDA, 3000) )
+
+    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+
+    mrg_address.append((IP_PANDA, 3001))
+    mrg_address.append((IP_PANDA, 3002))
+    mrg_address.append((IP_PANDA, 3000))
 
     
     plotter_address = ('172.16.222.46', 5999)
@@ -90,7 +99,9 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
                 px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_angles(angles, focl, pp_coor, i+1)
                 message = f"{int(px_space_array[i*2])},{int(px_space_array[i*2+1])}"
                 # vis_out_sock.sendto(message.encode(), (IP_NUC, 4331+i))
-                mrg_out_socket[i].sendall(struct.pack('ffff', (px_space_array[i*2]-320)/320, (px_space_array[i*2+1]-240)/240, 0, presence[i]))
+                data = struct.pack('ffff', (px_space_array[i*2]-320)/320, (px_space_array[i*2+1]-240)/240, 0, presence[i])
+                # mrg_out_socket[i].sendall(data)
+                mrg_out_socket[i].sendto(data, mrg_address[i])
     
     plotter_socket.close()        
 
