@@ -137,7 +137,7 @@ double check_limit(double value, char axis) {
 /***********************************************************************************************/
 void save_nextcoor(double x, double y, double z) {
 
-  double offset_x = 0.10; // offset from object origin to robot end effector
+  double offset_x = 0.05; // offset from object origin to robot end effector
   double offset_y = 0.15;
   double offset_z = 0.10;
 
@@ -327,6 +327,9 @@ void move_end_effector(char* robot_ip) {
 
     printf("q3: %f\n", first_state.q_d[3]);
     printf("q6: %f\n", first_state.q_d[6]);
+    printf("x: %f\n", nextcoor.x);
+    printf("y: %f\n", nextcoor.y);
+    printf("z: %f\n", nextcoor.z);
     
     franka::RobotState initial_state = first_state;
 
@@ -351,13 +354,37 @@ void move_end_effector(char* robot_ip) {
       c_target.z = validate(robot_state.O_T_EE[14], nextcoor.z); 
       mutex_nextcoor.unlock();                                    
 
+      double speed = 4;
+
+      double roll;  
+      double pitch;
+      double yaw;
+
+
+      pitch = -45.0;
+      roll = -90.0;  
+      yaw = -180.0;
+
+
+      roll = M_PI / 180.0 * roll; // gamma (x)
+      pitch = M_PI / 180.0 * pitch; // beta (y)
+      yaw = M_PI / 180.0 * yaw; // alpha (z)
+
+
       // actual end effector positioning command
+      initial_state.O_T_EE[0] = cos(pitch)*cos(roll);
+      initial_state.O_T_EE[1] = cos(pitch)*sin(roll);
+      initial_state.O_T_EE[2] = -sin(pitch);
+      initial_state.O_T_EE[4] = sin(yaw)*sin(pitch)*cos(roll)-cos(yaw)*sin(roll);
+      initial_state.O_T_EE[5] = sin(yaw)*sin(pitch)*sin(roll)+cos(yaw)*cos(roll);
+      initial_state.O_T_EE[6] = sin(yaw)*cos(pitch);
+      initial_state.O_T_EE[8] = cos(yaw)*sin(pitch)*cos(roll)+sin(yaw)*sin(roll);
+      initial_state.O_T_EE[9] = cos(yaw)*sin(pitch)*sin(roll)-sin(yaw)*cos(roll);
+      initial_state.O_T_EE[10] = cos(yaw)*cos(pitch);
       initial_state.O_T_EE[12] = c_target.x;
       initial_state.O_T_EE[13] = c_target.y;
       initial_state.O_T_EE[14] = c_target.z;
-      initial_state.q_d[3] = -2.699157; // first_state.q_d[3]; 
-      // initial_state.q_d[5] = first_state.q_d[5]; 
-      initial_state.q_d[6] = 0.864497; //first_state.q_d[6]; 
+      initial_state.O_T_EE[15] = 1;
 
 
       // equilibrium point is the initial position
@@ -383,7 +410,7 @@ void move_end_effector(char* robot_ip) {
       // compute error to desired equilibrium pose
       // position error
       Eigen::Matrix<double, 6, 1> error;
-      error.head(3) << 4.0*(position - position_d);
+      error.head(3) << speed*(position - position_d);
 
       // orientation error
       // "difference" quaternion

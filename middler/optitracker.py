@@ -73,7 +73,7 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
 
     mrg_address.append((IP_PANDA, 3001))
     mrg_address.append((IP_PANDA, 3002))
-    mrg_address.append((IP_PANDA, 3000))
+    mrg_address.append((IP_PANDA, 3003))
 
     
     plotter_address = ('172.16.222.46', 5999)

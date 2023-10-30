@@ -25,8 +25,8 @@ add_library(ncs_common STATIC
 target_link_libraries(ncs_common PUBLIC Franka::Franka Eigen3::Eigen3)
 
 set(NCSS
-  xyz_follower
   follower
+  orientator
   tcp_follower
 )
 
