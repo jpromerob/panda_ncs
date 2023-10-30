@@ -50,7 +50,7 @@ def start_streaming(cam_info, mode, undistortion):
 
 def visualize_data(args):
 
-    window_name = 'Cobotics Workspace'
+    window_name = 'Pixel Space'
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(window_name, (math.ceil(640*2*args.scale), math.ceil(480*2*args.scale)))
 

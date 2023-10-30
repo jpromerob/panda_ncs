@@ -13,6 +13,9 @@ import math
 import datetime
 
 IP_NUC = '172.16.222.46'
+MGN_BKG_COLOR = '#F2F2F2'
+SUB_BKG_COLOR = '#000000'
+TXT_COLOR = "FFFFFF"
 
 class xyz_estimate:
     def __init__(self, queue):
@@ -112,33 +115,37 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, e, axs):
 
     # Draw x and y lists
     axs[0].clear()
+    axs[0].set_facecolor(SUB_BKG_COLOR) 
     axs[0].plot(t, xyz_ncs.x, color='r')
     axs[0].plot(t, xyz_opt.x, color='r', linestyle='--')
-    axs[0].text(t[0], 0.1, txt_x, fontsize='xx-large')
+    axs[0].text(t[0], 0.1, txt_x, fontsize='xx-large', color='w')
     axs[0].xaxis.set_visible(False)
     axs[0].set_ylim([-0.7,0.3])
     axs[0].set_ylabel('x')
 
     axs[1].clear()
+    axs[1].set_facecolor(SUB_BKG_COLOR) 
     axs[1].plot(t, xyz_ncs.y, color='g')
     axs[1].plot(t, xyz_opt.y, color='g', linestyle='--')
-    axs[1].text(t[0], 0.8, txt_y, fontsize='xx-large')
+    axs[1].text(t[0], 0.8, txt_y, fontsize='xx-large', color='w')
     axs[1].xaxis.set_visible(False)
     axs[1].set_ylim([0,1])
     axs[1].set_ylabel('y')
 
     axs[2].clear()
+    axs[2].set_facecolor(SUB_BKG_COLOR) 
     axs[2].plot(t, xyz_ncs.z, color='b')
     axs[2].plot(t, xyz_opt.z, color='b', linestyle='--')
-    axs[2].text(t[0], 1.3, txt_z, fontsize='xx-large')
+    axs[2].text(t[0], 1.3, txt_z, fontsize='xx-large', color='w')
     axs[2].xaxis.set_visible(False)
     axs[2].set_ylim([0.5,1.5])
     axs[2].set_ylabel('z')
 
     
     axs[3].clear()
-    axs[3].plot(t, e, color='k')
-    axs[3].text(t[0], 20, txt_e, fontsize='xx-large')
+    axs[3].set_facecolor(SUB_BKG_COLOR) 
+    axs[3].plot(t, e, color='w')
+    axs[3].text(t[0], 20, txt_e, fontsize='xx-large', color='w')
     axs[3].xaxis.set_visible(False)
     axs[3].set_ylim([0,25])
     axs[3].set_ylabel('e')
@@ -151,6 +158,7 @@ def oscilloscope(xyz_ncs_queue, xyz_opt_queue):
 
     # Create figure for plotting
     fig, axs = plt.subplots(4, figsize=(8.72, 6.18))
+    fig.patch.set_facecolor(MGN_BKG_COLOR)
     fig.canvas.manager.set_window_title('World Space')
 
 
