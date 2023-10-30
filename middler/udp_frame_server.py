@@ -171,8 +171,8 @@ def main(args):
     queue_out = multiprocessing.Queue(100)
     host = args.destination
     if args.ports == "default":
-        ports_in = [2300, 2301, 2302]
-        ports_out = [3000, 3001, 3002]
+        ports_in = [2301, 2302, 2303]
+        ports_out = [3001, 3002, 3003]
     else:
         ports_in = []
         ports_out = []

@@ -180,7 +180,7 @@ if __name__ == '__main__':
     # Create an object of the cam_info class
     cam_1 = cam_info(id=1,bus=4, nbr=args.c1nbr, p_sleipner=2301, p_nuc=3331)
     cam_2 = cam_info(id=2,bus=4, nbr=args.c2nbr, p_sleipner=2302, p_nuc=3332)
-    cam_3 = cam_info(id=3,bus=4, nbr=args.c3nbr, p_sleipner=2300, p_nuc=3333)
+    cam_3 = cam_info(id=3,bus=4, nbr=args.c3nbr, p_sleipner=2303, p_nuc=3333)
 
     # Create three parallel processes
     p_streaming_1 = multiprocessing.Process(target=start_streaming, args=(cam_1,args.mode,args.undistortion,))

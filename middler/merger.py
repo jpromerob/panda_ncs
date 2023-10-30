@@ -35,7 +35,7 @@ class PayloadPanda(Structure):
 def pos_server(merge_queue, cam_id):
 
 
-    port_nb = 3000 + cam_id%3 # cam #1 --> 3001 | cam #2 --> 3002 | cam #3 --> 3000
+    port_nb = 3000 + cam_id 
 
 
 
