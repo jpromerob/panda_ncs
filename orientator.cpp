@@ -137,9 +137,9 @@ double check_limit(double value, char axis) {
 /***********************************************************************************************/
 void save_nextcoor(double x, double y, double z) {
 
-  double offset_x = 0.05; // offset from object origin to robot end effector
-  double offset_y = 0.15;
-  double offset_z = 0.10;
+  double offset_x = 0.050; // offset from object origin to robot end effector
+  double offset_y = 0.150;
+  double offset_z = 0.100;
 
   if (mutex_nextcoor.try_lock()) {
     nextcoor.x = check_limit( x + 0.35 + offset_x, 'x'); 
@@ -292,6 +292,7 @@ void init_panda_pva(char* robot_ip) {
 
 #define PI 3.14159265
 
+double speed = 0;
 
 void move_end_effector(char* robot_ip) {
 
@@ -354,16 +355,24 @@ void move_end_effector(char* robot_ip) {
       c_target.z = validate(robot_state.O_T_EE[14], nextcoor.z); 
       mutex_nextcoor.unlock();                                    
 
-      double speed = 4;
+      // Smooth robot replacement upon program start
+      if(speed < 4){
+        speed = speed + 0.001;
+      }
 
       double roll;  
       double pitch;
       double yaw;
 
-
-      pitch = -45.0;
-      roll = -90.0;  
+      // ARROW 
+      pitch = -45.0; // moves hand up and down
+      roll = -90.0; // rotates hand
       yaw = -180.0;
+
+      // HOOK!
+      // pitch = -30.0; // moves hand up and down
+      // roll = -150.0; // rotates hand
+      // yaw = -180.0;
 
 
       roll = M_PI / 180.0 * roll; // gamma (x)

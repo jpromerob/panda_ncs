@@ -86,12 +86,13 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
         values = struct.unpack('6d', data)
         for i in range(3): # we forget the angles for now
             xyz_array[i] = round(values[i],3)
+            abc_array[i] = round(values[i+3],3)
         
-        ground_truth = [xyz_array[0], xyz_array[1], xyz_array[2], 1]
+        xyz_ground_truth = [xyz_array[0], xyz_array[1], xyz_array[2], 1]
         plotter_socket.sendto(struct.pack('fff', xyz_array[0], xyz_array[1], xyz_array[2]), plotter_address)
 
         if not disable_opt_px:
-            perspective = get_perspectives(c2w, ground_truth)
+            perspective = get_perspectives(c2w, xyz_ground_truth)
             px_space_array = np.zeros(6)
             presence = [1,1,1] #next(gen_presence)
             for i in range(3):
@@ -124,6 +125,7 @@ if __name__ == '__main__':
 
 
     xyz_array = multiprocessing.Array('d', [0.0,0.0,0.0])
+    abc_array = multiprocessing.Array('d', [0.0,0.0,0.0])
     receiver = multiprocessing.Process(target=get_pixel_spaces_from_optitrack, args=(args.disable_opt_px,))
     sender = multiprocessing.Process(target=get_optitrack_pose)
     receiver.start()
