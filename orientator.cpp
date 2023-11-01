@@ -44,6 +44,11 @@ typedef struct payload_t {
     float z;
 } payload;
 
+
+#define OFFSET_X 0.050
+#define OFFSET_Y 0.150
+#define OFFSET_Z 0.150
+
 #pragma pack()
 
 
@@ -137,14 +142,10 @@ double check_limit(double value, char axis) {
 /***********************************************************************************************/
 void save_nextcoor(double x, double y, double z) {
 
-  double offset_x = 0.050; // offset from object origin to robot end effector
-  double offset_y = 0.150;
-  double offset_z = 0.100;
-
   if (mutex_nextcoor.try_lock()) {
-    nextcoor.x = check_limit( x + 0.35 + offset_x, 'x'); 
-    nextcoor.y = check_limit(-z + 0.36 + offset_y, 'y');
-    nextcoor.z = check_limit( y + 0.01 + offset_z, 'z');
+    nextcoor.x = check_limit( x + 0.35 + OFFSET_X, 'x'); 
+    nextcoor.y = check_limit(-z + 0.36 + OFFSET_Y, 'y');
+    nextcoor.z = check_limit( y + 0.01 + OFFSET_Z, 'z');
     mutex_nextcoor.unlock();
   }
 
@@ -324,13 +325,6 @@ void move_end_effector(char* robot_ip) {
     franka::Model model = robot.loadModel();
 
     franka::RobotState first_state = robot.readOnce();
-
-
-    printf("q3: %f\n", first_state.q_d[3]);
-    printf("q6: %f\n", first_state.q_d[6]);
-    printf("x: %f\n", nextcoor.x);
-    printf("y: %f\n", nextcoor.y);
-    printf("z: %f\n", nextcoor.z);
     
     franka::RobotState initial_state = first_state;
 
@@ -364,10 +358,22 @@ void move_end_effector(char* robot_ip) {
       double pitch;
       double yaw;
 
+      double delta_pitch = 0; 
+      double delta_roll = 0; 
+      double delta_yaw = 0; 
+
+      // if(c_target.z < 0.3){
+      //   delta_pitch = -max(10.0,abs(atan((c_target.z-0.3)/OFFSET_Y)*180/M_PI));
+      // }
+      delta_roll= atan((OFFSET_X*2-c_target.x)/OFFSET_Y)*180/M_PI;
+
       // ARROW 
-      pitch = -45.0; // moves hand up and down
-      roll = -90.0; // rotates hand
-      yaw = -180.0;
+      roll = -90.0 + delta_roll; // rotates hand
+      pitch = -45.0 + delta_pitch; // moves hand up and down
+      yaw = 180.0 + delta_yaw;
+
+      // printf("Roll: %.3f\n", roll);
+      // printf("Pitch: %.3f\n", pitch);
 
       // HOOK!
       // pitch = -30.0; // moves hand up and down
@@ -483,7 +489,7 @@ int main(int argc, char** argv) {
   // This is to prevent sudden motion
   init_panda_pva(argv[1]);
 
-  close_gripper(argv[1]);
+  // close_gripper(argv[1]);
    
 
   switch(op_mode){

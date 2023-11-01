@@ -111,7 +111,7 @@ def combiner(merge_queue, ip_address, port_nb):
 
     counter = 0
     print_counter = 1000
-    max_counter = 5000
+    max_counter = 1400
     elapsed = np.zeros(max_counter)
 
     while(True):
@@ -165,8 +165,8 @@ def combiner(merge_queue, ip_address, port_nb):
             print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
             counter = 0
 
-        if counter%print_counter == 0:
-            print(f"({round(x,3)},{round(y,3)},{round(z,3)})")
+        # if counter%print_counter == 0:
+        #     print(f"({round(x,3)},{round(y,3)},{round(z,3)})")
 
         # Send predicted (x,y,z) out (to robot and plotter)
         plotter_socket.sendto(struct.pack('fff', x, y, z), plotter_address)
