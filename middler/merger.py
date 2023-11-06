@@ -20,6 +20,9 @@ class PayloadSleipner(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
                 ("z", c_float),
+                ("a", c_float),
+                ("b", c_float),
+                ("g", c_float),
                 ("p", c_float)]
 
 class PayloadPanda(Structure):
@@ -52,7 +55,7 @@ def pos_server(merge_queue, cam_id):
         data, addr = ssock.recvfrom(2048)
 
         payload_in = PayloadSleipner.from_buffer_copy(data) 
-        merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.p])
+        merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.a, payload_in.b, payload_in.g, payload_in.p])
         message = f"{int(payload_in.x*320+320)},{int(payload_in.y*240+240)}"
         vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
         
@@ -119,7 +122,7 @@ def combiner(merge_queue, ip_address, port_nb):
         while not merge_queue.empty():
             datum = merge_queue.get()
             cam_id = datum[0]
-            presence[cam_id-1] = datum[4]
+            presence[cam_id-1] = datum[-1]
             if oldsence[cam_id-1] != presence[cam_id-1]:
                 oldsence[cam_id-1] = presence[cam_id-1]
             
@@ -154,6 +157,9 @@ def combiner(merge_queue, ip_address, port_nb):
         x = prediction[0]+offset[0]
         y = prediction[1]+offset[1]
         z = prediction[2]+offset[2]
+        alpha = 0
+        beta = 0
+        gamma = 0
 
 
         stop = datetime.datetime.now()
@@ -169,7 +175,7 @@ def combiner(merge_queue, ip_address, port_nb):
         #     print(f"({round(x,3)},{round(y,3)},{round(z,3)})")
 
         # Send predicted (x,y,z) out (to robot and plotter)
-        plotter_socket.sendto(struct.pack('fff', x, y, z), plotter_address)
+        plotter_socket.sendto(struct.pack('ffffff', x, y, z, alpha, beta, gamma), plotter_address)
         panda_socket.sendto(PayloadPanda(x, y, z), panda_address)
 
    

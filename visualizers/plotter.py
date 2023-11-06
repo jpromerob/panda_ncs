@@ -186,11 +186,13 @@ def get_xyz(xyz_queue, port_xyz_ncs):
 
     while True:
         # Receive data from the sender
-        data, addr = receiver_socket.recvfrom(12)  # Assuming three floats (3 * 4 bytes each)
+        data, addr = receiver_socket.recvfrom(24)  # Assuming three floats (3 * 4 bytes each)
 
         # Unpack the received data as three float values
-        values = struct.unpack('fff', data)
+        values = struct.unpack('ffffff', data)
         xyz_queue.put([values[0], values[1], values[2]])
+
+        # @TODO: Update queues so they store orientation as well
 
 
     # Close the socket

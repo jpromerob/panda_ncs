@@ -40,6 +40,9 @@ def send_tensors(sockets, tensors):
             + struct.pack("<f", tensor[1])
             + struct.pack("<f", tensor[2])
             + struct.pack("<f", tensor[3])
+            + struct.pack("<f", tensor[4])
+            + struct.pack("<f", tensor[5])
+            + struct.pack("<f", tensor[6])
         )
 
         s.sendto(bytes, address)
@@ -54,7 +57,7 @@ def sender(host, ports, queue, buffer=10):
     print("Sending averages to ", ports)
     t = time.time()
     count = 0
-    buffer = ringbuffer.RingBuffer((buffer, n_cameras, 4))
+    buffer = ringbuffer.RingBuffer((buffer, n_cameras, 7))
     try:
         while True:
             tensors = queue.get()
@@ -129,7 +132,10 @@ def predictor(
                 pose = model(tensor)
                 pres = presence(tensor).reshape(-1, 1)
                 if not queue_out.full():
-                    output = np.concatenate([pose, pres], 1)
+                    alpha = np.array([0,0,0]).reshape(-1, 1)
+                    beta = np.array([0,0,0]).reshape(-1, 1)
+                    gamma = np.array([0,0,0]).reshape(-1, 1)
+                    output = np.concatenate((pose, alpha, beta, gamma, pres), 1)
                     queue_out.put(output, block=False)
 
                 c += 1

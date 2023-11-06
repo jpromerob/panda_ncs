@@ -86,10 +86,10 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
         values = struct.unpack('6d', data)
         for i in range(3): # we forget the angles for now
             xyz_array[i] = round(values[i],3)
-            abc_array[i] = round(values[i+3],3)
+            abg_array[i] = round(values[i+3],3)
         
         xyz_ground_truth = [xyz_array[0], xyz_array[1], xyz_array[2], 1]
-        plotter_socket.sendto(struct.pack('fff', xyz_array[0], xyz_array[1], xyz_array[2]), plotter_address)
+        plotter_socket.sendto(struct.pack('ffffff', xyz_array[0], xyz_array[1], xyz_array[2], abg_array[0], abg_array[1], abg_array[2]), plotter_address)
 
         if not disable_opt_px:
             perspective = get_perspectives(c2w, xyz_ground_truth)
@@ -98,10 +98,15 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
             for i in range(3):
                 angles = get_angles_from_pos(perspective[:,i])
                 px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_angles(angles, focl, pp_coor, i+1)
-                message = f"{int(px_space_array[i*2])},{int(px_space_array[i*2+1])}"
-                # vis_out_sock.sendto(message.encode(), (IP_NUC, 4331+i))
-                data = struct.pack('ffff', (px_space_array[i*2]-320)/320, (px_space_array[i*2+1]-240)/240, 0, presence[i])
-                # mrg_out_socket[i].sendall(data)
+                                
+                px_x = (px_space_array[i*2]-320)/320
+                px_y = (px_space_array[i*2+1]-240)/240
+                px_z = 0
+                px_a = 0
+                px_b = 0
+                px_g = 0
+                data = struct.pack('fffffff', px_x, px_y, px_z, px_a, px_b, px_g, presence[i])
+                
                 mrg_out_socket[i].sendto(data, mrg_address[i])
     
     plotter_socket.close()        
@@ -125,7 +130,7 @@ if __name__ == '__main__':
 
 
     xyz_array = multiprocessing.Array('d', [0.0,0.0,0.0])
-    abc_array = multiprocessing.Array('d', [0.0,0.0,0.0])
+    abg_array = multiprocessing.Array('d', [0.0,0.0,0.0])
     receiver = multiprocessing.Process(target=get_pixel_spaces_from_optitrack, args=(args.disable_opt_px,))
     sender = multiprocessing.Process(target=get_optitrack_pose)
     receiver.start()
