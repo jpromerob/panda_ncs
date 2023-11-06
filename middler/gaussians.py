@@ -91,3 +91,18 @@ def analytical(μ, Σ, presence, old_μ, oldsence):
 
 
     return mu
+
+def average_angles(pa, pb, pg, presence, cam_poses):   
+    alpha = 0
+    beta = 0
+    gamma = 0
+    for i in range(3):
+        alpha += (pa[i]+cam_poses[i][3])*presence[i]
+        beta += (pb[i]+cam_poses[i][4])*presence[i]
+        gamma += (pg[i]+cam_poses[i][5])*presence[i]
+
+    alpha = alpha/np.sum(presence)
+    beta = beta/np.sum(presence)
+    gamma = gamma/np.sum(presence)
+
+    return alpha, beta, gamma

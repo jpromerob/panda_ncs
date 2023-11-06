@@ -81,12 +81,20 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
 
 
     gen_presence = presentiatior()
+    trash_counter = 0
     while True:
+        trash_counter+=1
         data, addr = opt_in_socket.recvfrom(1024)
         values = struct.unpack('6d', data)
         for i in range(3): # we forget the angles for now
             xyz_array[i] = round(values[i],3)
             abg_array[i] = round(values[i+3],3)
+
+        if trash_counter % 100 == 0:
+            alpha_deg = round(abg_array[0],2)
+            beta_deg =  round(abg_array[1],2)
+            gamma_deg = round(abg_array[2],2)
+            print(f"{alpha_deg} | {beta_deg} | {gamma_deg}")
         
         xyz_ground_truth = [xyz_array[0], xyz_array[1], xyz_array[2], 1]
         plotter_socket.sendto(struct.pack('ffffff', xyz_array[0], xyz_array[1], xyz_array[2], abg_array[0], abg_array[1], abg_array[2]), plotter_address)
@@ -95,16 +103,29 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
             perspective = get_perspectives(c2w, xyz_ground_truth)
             px_space_array = np.zeros(6)
             presence = [1,1,1] #next(gen_presence)
-            for i in range(3):
+            for i in range(3): # for each camera
                 angles = get_angles_from_pos(perspective[:,i])
                 px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_angles(angles, focl, pp_coor, i+1)
                                 
                 px_x = (px_space_array[i*2]-320)/320
                 px_y = (px_space_array[i*2+1]-240)/240
                 px_z = 0
-                px_a = 0
-                px_b = 0
-                px_g = 0
+
+                # To calculate the orientation (roll, pitch, yaw) 
+                # of the object from the perspective of the camera, 
+                # you can subtract the camera's orientation from the 
+                # object's orientation in the 'world' frame. 
+
+                px_a = (abg_array[0]*math.pi/180 - cam_poses[i][3])/math.pi # from -1 to 1 (instead of -pi to pi)
+                px_b = (abg_array[1]*math.pi/180 - cam_poses[i][4])/math.pi # from -1 to 1 (instead of -pi to pi)
+                px_g = (abg_array[2]*math.pi/180 - cam_poses[i][5])/math.pi # from -1 to 1 (instead of -pi to pi)
+
+                # if trash_counter % 100 == 0:
+                #     alpha_deg = round(px_a*180/math.pi,2)
+                #     beta_deg =  round(px_b*180/math.pi,2)
+                #     gamma_deg = round(px_g*180/math.pi,2)
+                #     print(f"cam #{i+1} {alpha_deg} | {beta_deg} | {gamma_deg}")
+
                 data = struct.pack('fffffff', px_x, px_y, px_z, px_a, px_b, px_g, presence[i])
                 
                 mrg_out_socket[i].sendto(data, mrg_address[i])

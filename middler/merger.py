@@ -28,7 +28,10 @@ class PayloadSleipner(Structure):
 class PayloadPanda(Structure):
     _fields_ = [("x", c_float),
                 ("y", c_float),
-                ("z", c_float)]
+                ("z", c_float),
+                ("a", c_float),
+                ("b", c_float),
+                ("g", c_float)]
 
     
 ##############################################################################################################################
@@ -95,8 +98,19 @@ def combiner(merge_queue, ip_address, port_nb):
 
     px = np.zeros(3)
     py = np.zeros(3)
+    pz = np.zeros(3)
+
+    pa = np.zeros(3)
+    pb = np.zeros(3)
+    pg = np.zeros(3)
+
     old_px = np.zeros(3)
     old_py = np.zeros(3)
+    old_pz = np.zeros(3)
+
+    old_pa = np.zeros(3)
+    old_pb = np.zeros(3)
+    old_pg = np.zeros(3)
 
     oldsence = np.ones(3)
     presence = np.ones(3)
@@ -129,11 +143,26 @@ def combiner(merge_queue, ip_address, port_nb):
             if presence[cam_id-1] == 0:
                 px[cam_id-1] = old_px[cam_id-1]
                 py[cam_id-1] = old_py[cam_id-1]
+                pz[cam_id-1] = old_pz[cam_id-1]
+                pa[cam_id-1] = old_pa[cam_id-1]
+                pb[cam_id-1] = old_pb[cam_id-1]
+                pg[cam_id-1] = old_pg[cam_id-1]
+
             else:
                 old_px[cam_id-1] = px[cam_id-1]
                 old_py[cam_id-1] = py[cam_id-1]
+                old_pz[cam_id-1] = pz[cam_id-1]
+                old_pa[cam_id-1] = pa[cam_id-1]
+                old_pb[cam_id-1] = pb[cam_id-1]
+                old_pg[cam_id-1] = pg[cam_id-1]
                 px[cam_id-1] = datum[1]*320
                 py[cam_id-1] = datum[2]*240
+                pz[cam_id-1] = datum[3] # @TODO: how to interpret Z? (-1 to 1?) ... what;s the scaling?
+                pa[cam_id-1] = datum[4]*math.pi # @TODO: assuming that angles in [-1..1] (from -pi to pi)
+                pb[cam_id-1] = datum[5]*math.pi
+                pg[cam_id-1] = datum[6]*math.pi
+
+
             r_obj_angles[:, cam_id-1] = get_angles_from_dvs(px[cam_id-1], py[cam_id-1], focl, cam_id) 
             
 
@@ -157,9 +186,8 @@ def combiner(merge_queue, ip_address, port_nb):
         x = prediction[0]+offset[0]
         y = prediction[1]+offset[1]
         z = prediction[2]+offset[2]
-        alpha = 0
-        beta = 0
-        gamma = 0
+        
+        alpha, beta, gamma = average_angles(pa, pb, pg, presence, cam_poses)
 
 
         stop = datetime.datetime.now()
@@ -169,6 +197,10 @@ def combiner(merge_queue, ip_address, port_nb):
             counter += 1
         else:
             print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+            alpha_deg = round(alpha*180/math.pi,2)
+            beta_deg =   round(beta*180/math.pi,2)
+            gamma_deg = round(gamma*180/math.pi,2)
+            print(f"{alpha_deg} | {beta_deg} | {gamma_deg}")
             counter = 0
 
         # if counter%print_counter == 0:
@@ -176,14 +208,14 @@ def combiner(merge_queue, ip_address, port_nb):
 
         # Send predicted (x,y,z) out (to robot and plotter)
         plotter_socket.sendto(struct.pack('ffffff', x, y, z, alpha, beta, gamma), plotter_address)
-        panda_socket.sendto(PayloadPanda(x, y, z), panda_address)
+        panda_socket.sendto(PayloadPanda(x, y, z, alpha, beta, gamma), panda_address)
 
    
     s.close()
     plotter_socket.close()
 
     return 0
-   
+
 
 def parse_paramerge_cfg():
 

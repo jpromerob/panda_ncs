@@ -42,6 +42,9 @@ typedef struct payload_t {
     float x;
     float y;
     float z;
+    float a;
+    float b;
+    float g;
 } payload;
 
 
@@ -49,38 +52,39 @@ typedef struct payload_t {
 #define OFFSET_Y 0.150
 #define OFFSET_Z 0.150
 
+#define MIN_X -0.20
+#define MIN_Y -0.80
+#define MIN_Z 0.10
+#define MAX_X 0.60
+#define MAX_Y 0.20
+#define MAX_Z 0.80
+
+
 #pragma pack()
 
 
 int op_mode;
 
 
-typedef struct coor
+typedef struct pose
 {
     double x;
     double y;
     double z;
+    double a;
+    double b;
+    double g;
 
-} coor;
+} pose;
 
-std::mutex mutex_nextcoor;
-std::mutex mutex_p_current;
-
-
-/* Limits of the workspace*/
-coor minimum;
-coor maximum;
+std::mutex mutex_nextpose;
 
 /* Current Target */
-coor c_target;
-coor u_target;
+pose c_target;
 
-/* What the optitrack sees (in Panda coordinate framework)*/
-coor nextcoor;
+/* What the optitrack sees (in Panda posedinate framework)*/
+pose nextpose;
 
-/* Proprioception */
-coor p_current;
-coor p_delta;
 
 
 
@@ -91,23 +95,23 @@ coor p_delta;
 /*                                                                                             */
 /*                                                                                             */
 /***********************************************************************************************/
-double check_limit(double value, char axis) {
+double check_xyz_lim(double value, char axis) {
 
     double final_value = value;
     double max_val = 0.15;
     double min_val = 0.15;
     
     if(axis == 'x') {
-      max_val = maximum.x;
-      min_val = minimum.x;
+      max_val = MAX_X;
+      min_val = MIN_X;
     }
     if(axis == 'y') {
-      max_val = maximum.y;
-      min_val = minimum.y;
+      max_val = MAX_Y;
+      min_val = MIN_Y;
     }
     if(axis == 'z') {
-      max_val = maximum.z;
-      min_val = minimum.z;
+      max_val = MAX_Z;
+      min_val = MIN_Z;
     }
 
     // Limit Max Val for 'axis'
@@ -126,22 +130,49 @@ double check_limit(double value, char axis) {
 }
 
 
+/***********************************************************************************************/
+/* This function returns a 'final_value' for 'value' limited by -pi..pi range                  */
+/*                                                                                             */
+/*                                                                                             */
+/*                                                                                             */
+/*                                                                                             */
+/***********************************************************************************************/
+double check_angle_lim(double value){
+  double final_value = value;
+  return final_value;
+}
+
+#define BASE_G -90.0*M_PI/180
+#define BASE_B -30.0*M_PI/180
+#define BASE_A 180.0*M_PI/180
 
 /***********************************************************************************************/
-/* x, y, z are converted from optitrack coordinates to panda coordinates and stored in 'nextcoor'
+/* x, y, z are converted from optitrack posedinates to panda posedinates and stored in 'nextpose'
 /*
 /*
 /*
 /*
 /***********************************************************************************************/
-void save_nextcoor(double x, double y, double z) {
+void save_nextpose(double x, double y, double z, double a, double b, double g) {
 
-  if (mutex_nextcoor.try_lock()) {
-    nextcoor.x = check_limit( x + 0.35 + OFFSET_X, 'x'); 
-    nextcoor.y = check_limit(-z + 0.36 + OFFSET_Y, 'y');
-    nextcoor.z = check_limit( y + 0.01 + OFFSET_Z, 'z');
-    mutex_nextcoor.unlock();
+  double delta_pitch = 0; 
+  double delta_roll = 0 ; 
+  double delta_yaw = 0; 
+
+  if (mutex_nextpose.try_lock()) {
+    nextpose.x = check_xyz_lim( x + 0.35 + OFFSET_X, 'x'); 
+    nextpose.y = check_xyz_lim(-z + 0.36 + OFFSET_Y, 'y');
+    nextpose.z = check_xyz_lim( y + 0.01 + OFFSET_Z, 'z');
+
+    delta_roll = atan((OFFSET_X*2-nextpose.x)/OFFSET_Y);
+
+    nextpose.a = check_angle_lim(BASE_A + delta_yaw); // yaw --> alpha : around z (theory)
+    nextpose.b = check_angle_lim(BASE_B + delta_pitch); // pitch --> beta : around y (theory) up-down (hand)
+    nextpose.g = check_angle_lim(BASE_G + delta_roll); // roll --> gamma : around x (theory) left-right (hand)
+    mutex_nextpose.unlock();
   }
+
+  // printf("%.3f | %.3f | %.3f \n", a*180/M_PI, b*180/M_PI, g*180/M_PI);
 
 }
 
@@ -189,7 +220,8 @@ int get_xyz_data()
           perror("recvfrom");
           return 1;
       }
-      save_nextcoor(receivedPayload.x, receivedPayload.y, receivedPayload.z);
+      save_nextpose(receivedPayload.x, receivedPayload.y, receivedPayload.z,
+                    receivedPayload.a, receivedPayload.b, receivedPayload.g);
 
     }
 
@@ -197,40 +229,20 @@ int get_xyz_data()
     return 0;
 }
 
-/***********************************************************************************************/
-/* Max and min values in robot coordinate frame                                                */
-/*                                                                                             */
-/*                                                                                             */
-/*                                                                                             */
-/*                                                                                             */
-/***********************************************************************************************/
-void init_maxmin_values(){
 
 
-  minimum.x = -0.20;
-  minimum.y = -0.80;
-  minimum.z = 0.10;
-
-  maximum.x = 0.60; //
-  maximum.y = 0.20; // +y points to munin
-  maximum.z = 0.80; // up down
-
-}
-
-
-
-double validate(double curr_coor, double next_coor){
+double validate(double curr_pose, double next_pose){
 
     double delta = 0.10; // 10[cm]
-    double valid_coor = next_coor;
-    if(next_coor > curr_coor + delta){
-      valid_coor = curr_coor + delta;
+    double valid_pose = next_pose;
+    if(next_pose > curr_pose + delta){
+      valid_pose = curr_pose + delta;
     }
-    if(next_coor < curr_coor - delta){
-      valid_coor = curr_coor - delta;
+    if(next_pose < curr_pose - delta){
+      valid_pose = curr_pose - delta;
     }
 
-    return valid_coor;
+    return valid_pose;
 
 }
 
@@ -250,12 +262,12 @@ void close_gripper(char * robot_ip) {
 
     // Grasp the object: speed + force
     double object_width = 3/1000.0; // [m]
-    double speed = 0.2; // [m/s]
+    double gripper_speed = 0.2; // [m/s]
     double force = 140; // [N]
 
     std::cout << "Grasping ... " << std::endl;
     
-    if (!gripper.grasp(object_width, speed, force)) {
+    if (!gripper.grasp(object_width, gripper_speed, force)) {
       std::cout << "Failed to grasp object." << std::endl;
     }
 
@@ -273,11 +285,11 @@ void init_panda_pva(char* robot_ip) {
     final_joints = robot_state.q_d;
 
 
-    if (mutex_nextcoor.try_lock()) {
-      nextcoor.x = final_pose[12]; 
-      nextcoor.y = final_pose[13];
-      nextcoor.z = final_pose[14];
-      mutex_nextcoor.unlock();
+    if (mutex_nextpose.try_lock()) {
+      nextpose.x = final_pose[12]; 
+      nextpose.y = final_pose[13];
+      nextpose.z = final_pose[14];
+      mutex_nextpose.unlock();
     }
 
     return false;
@@ -337,59 +349,31 @@ void move_end_effector(char* robot_ip) {
                                          franka::Duration /*duration*/) -> franka::Torques {
 
                             
-      mutex_nextcoor.lock();
-      c_target.x = validate(robot_state.O_T_EE[12], nextcoor.x);
-      c_target.y = validate(robot_state.O_T_EE[13], nextcoor.y);
-      c_target.z = validate(robot_state.O_T_EE[14], nextcoor.z); 
-      mutex_nextcoor.unlock();                                    
+      mutex_nextpose.lock();
+      c_target.x = validate(robot_state.O_T_EE[12], nextpose.x);
+      c_target.y = validate(robot_state.O_T_EE[13], nextpose.y);
+      c_target.z = validate(robot_state.O_T_EE[14], nextpose.z); 
+      c_target.a = nextpose.a; // yaw --> alpha : around z (theory)
+      c_target.b = nextpose.b; // pitch --> beta : around y (theory)
+      c_target.g = nextpose.g; // roll --> gamma : around x (theory)
+      mutex_nextpose.unlock();                                    
 
       // Smooth robot replacement upon program start
       if(speed < 4){
         speed = speed + 0.001;
       }
 
-      double roll;  
-      double pitch;
-      double yaw;
-
-      double delta_pitch = 0; 
-      double delta_roll = 0; 
-      double delta_yaw = 0; 
-
-      // if(c_target.z < 0.3){
-      //   delta_pitch = -max(10.0,abs(atan((c_target.z-0.3)/OFFSET_Y)*180/M_PI));
-      // }
-      delta_roll= atan((OFFSET_X*2-c_target.x)/OFFSET_Y)*180/M_PI;
-
-      // ARROW 
-      roll = -90.0 + delta_roll; // rotates hand
-      pitch = -45.0 + delta_pitch; // moves hand up and down
-      yaw = 180.0 + delta_yaw;
-
-      // printf("Roll: %.3f\n", roll);
-      // printf("Pitch: %.3f\n", pitch);
-
-      // HOOK!
-      // pitch = -30.0; // moves hand up and down
-      // roll = -150.0; // rotates hand
-      // yaw = -180.0;
-
-
-      roll = M_PI / 180.0 * roll; // gamma (x)
-      pitch = M_PI / 180.0 * pitch; // beta (y)
-      yaw = M_PI / 180.0 * yaw; // alpha (z)
-
 
       // actual end effector positioning command
-      initial_state.O_T_EE[0] = cos(pitch)*cos(roll);
-      initial_state.O_T_EE[1] = cos(pitch)*sin(roll);
-      initial_state.O_T_EE[2] = -sin(pitch);
-      initial_state.O_T_EE[4] = sin(yaw)*sin(pitch)*cos(roll)-cos(yaw)*sin(roll);
-      initial_state.O_T_EE[5] = sin(yaw)*sin(pitch)*sin(roll)+cos(yaw)*cos(roll);
-      initial_state.O_T_EE[6] = sin(yaw)*cos(pitch);
-      initial_state.O_T_EE[8] = cos(yaw)*sin(pitch)*cos(roll)+sin(yaw)*sin(roll);
-      initial_state.O_T_EE[9] = cos(yaw)*sin(pitch)*sin(roll)-sin(yaw)*cos(roll);
-      initial_state.O_T_EE[10] = cos(yaw)*cos(pitch);
+      initial_state.O_T_EE[0] = cos(c_target.b)*cos(c_target.g);
+      initial_state.O_T_EE[1] = cos(c_target.b)*sin(c_target.g);
+      initial_state.O_T_EE[2] = -sin(c_target.b);
+      initial_state.O_T_EE[4] = sin(c_target.a)*sin(c_target.b)*cos(c_target.g)-cos(c_target.a)*sin(c_target.g);
+      initial_state.O_T_EE[5] = sin(c_target.a)*sin(c_target.b)*sin(c_target.g)+cos(c_target.a)*cos(c_target.g);
+      initial_state.O_T_EE[6] = sin(c_target.a)*cos(c_target.b);
+      initial_state.O_T_EE[8] = cos(c_target.a)*sin(c_target.b)*cos(c_target.g)+sin(c_target.a)*sin(c_target.g);
+      initial_state.O_T_EE[9] = cos(c_target.a)*sin(c_target.b)*sin(c_target.g)-sin(c_target.a)*cos(c_target.g);
+      initial_state.O_T_EE[10] = cos(c_target.a)*cos(c_target.b);
       initial_state.O_T_EE[12] = c_target.x;
       initial_state.O_T_EE[13] = c_target.y;
       initial_state.O_T_EE[14] = c_target.z;
@@ -424,7 +408,7 @@ void move_end_effector(char* robot_ip) {
       // orientation error
       // "difference" quaternion
       if (orientation_d.coeffs().dot(orientation.coeffs()) < 0.0) {
-        orientation.coeffs() << -orientation.coeffs();
+        orientation.coeffs() << -0.5*orientation.coeffs();
       }
       // "difference" quaternion
       Eigen::Quaterniond error_quaternion(orientation.inverse() * orientation_d);
@@ -475,7 +459,8 @@ int main(int argc, char** argv) {
     std::cerr << "Usage: " << argv[0] << " <robot-ip> <operating-mode>" << std::endl;
     return -1;
   }
-  init_maxmin_values();
+  
+  
   op_mode = stoi(argv[2]);
   printf("Mode: %d\n", op_mode);
 
@@ -483,7 +468,7 @@ int main(int argc, char** argv) {
   // This is to prevent sudden motion
   init_panda_pva(argv[1]);
 
-  close_gripper(argv[1]);
+  // close_gripper(argv[1]);
    
 
   switch(op_mode){
