@@ -55,12 +55,6 @@ typedef struct payload_t {
 int op_mode;
 
 
-double scale = 0.9; // scaling constant 
-double max_v = 1.7 * scale; // velocity
-double max_a = 13.0 * scale; // acceleration
-// double max_j = 6500.0 * scale; // Jerk
-double max_j = 100; // Jerk
-
 typedef struct coor
 {
     double x;
@@ -489,7 +483,7 @@ int main(int argc, char** argv) {
   // This is to prevent sudden motion
   init_panda_pva(argv[1]);
 
-  // close_gripper(argv[1]);
+  close_gripper(argv[1]);
    
 
   switch(op_mode){
