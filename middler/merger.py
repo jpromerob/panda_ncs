@@ -190,6 +190,49 @@ def combiner(merge_queue, ip_address, port_nb):
         alpha, beta, gamma = average_angles(pa, pb, pg, presence, cam_poses)
 
 
+
+        plotter_socket.sendto(struct.pack('ffffff', x, y, z, alpha, beta, gamma), plotter_address)
+
+
+        # So far we have the pose of the 'centroid' of the object in world space
+        # However, the robot needs to follow one of the vertices of the object
+        # The location of such vertex, w.r.t the centroid, is d_x, d_y, d_z)
+        # We want to obtain the vertex's  location w.r.t to the origin
+        # So, we need to apply translation matrices ... 
+
+
+        centroid_poses = np.zeros((1,6))
+        centroid_poses[0,0] = x # x
+        centroid_poses[0,1] = y # y
+        centroid_poses[0,2] = z # z
+        centroid_poses[0,3] = alpha # alpha
+        centroid_poses[0,4] = beta  # beta
+        centroid_poses[0,5] = gamma # gamma
+
+
+        vertex_xyz = np.zeros(4)
+        vertex_xyz[0] = -0.050 # x: -0.050 for hammer and -0.050 for nail
+        vertex_xyz[1] = -0.000 # y
+        vertex_xyz[2] =  0.135 # z
+        vertex_xyz[3] = 1 # just like that
+
+        vertex_abg = np.zeros(4)
+        vertex_abg[0] = (math.pi/180)*-0
+        vertex_abg[1] = (math.pi/180)*90
+        vertex_abg[2] = (math.pi/180)*-0
+
+
+        centroid_r2w = get_rotmats(centroid_poses)
+        centroid_trl = get_transmats(centroid_poses)
+        centroid_c2w = centroid_trl[:,:,0].dot(centroid_r2w[:,:,0])
+        vertex_xyz = centroid_c2w.dot(vertex_xyz)
+
+        x = round(vertex_xyz[0],3)
+        y = round(vertex_xyz[1],3)
+        z = round(vertex_xyz[2],3)
+        # beta += vertex_abg[1]
+
+
         stop = datetime.datetime.now()
         diff = stop - start
         elapsed[counter] = int(diff.microseconds)
@@ -197,17 +240,16 @@ def combiner(merge_queue, ip_address, port_nb):
             counter += 1
         else:
             print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+            x_short = round(x,3)
+            y_short = round(y,3)
+            z_short = round(z,3)
             alpha_deg = round(alpha*180/math.pi,2)
             beta_deg =   round(beta*180/math.pi,2)
             gamma_deg = round(gamma*180/math.pi,2)
-            print(f"{alpha_deg} | {beta_deg} | {gamma_deg}")
+            print(f"{x_short} | {y_short} | {z_short} | {alpha_deg} | {beta_deg} | {gamma_deg}")
             counter = 0
 
-        # if counter%print_counter == 0:
-        #     print(f"({round(x,3)},{round(y,3)},{round(z,3)})")
-
-        # Send predicted (x,y,z) out (to robot and plotter)
-        plotter_socket.sendto(struct.pack('ffffff', x, y, z, alpha, beta, gamma), plotter_address)
+        
         panda_socket.sendto(PayloadPanda(x, y, z, alpha, beta, gamma), panda_address)
 
    

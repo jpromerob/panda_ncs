@@ -48,22 +48,28 @@ typedef struct payload_t {
 } payload;
 
 
-#define OFFSET_X 0.050
-#define OFFSET_Y 0.150
-#define OFFSET_Z 0.150
+#define ROBOT_IP "172.16.0.2"
 
-#define MIN_X -0.20
+#define OFFSET_X 0.030
+#define OFFSET_Y 0.040
+#define OFFSET_Z -0.100
+
+#define MIN_X -0.10
 #define MIN_Y -0.80
 #define MIN_Z 0.10
 #define MAX_X 0.60
-#define MAX_Y 0.20
+#define MAX_Y -0.20
 #define MAX_Z 0.80
 
+# define MAX_ROB_SPEED 4.0
+
+#define BASE_A -100*M_PI/180
+#define BASE_B 90*M_PI/180
+#define BASE_G -150*M_PI/180 // rotate around z (right-hand rule)
 
 #pragma pack()
 
 
-int op_mode;
 
 
 typedef struct pose
@@ -142,9 +148,6 @@ double check_angle_lim(double value){
   return final_value;
 }
 
-#define BASE_G -90.0*M_PI/180
-#define BASE_B -30.0*M_PI/180
-#define BASE_A 180.0*M_PI/180
 
 /***********************************************************************************************/
 /* x, y, z are converted from optitrack posedinates to panda posedinates and stored in 'nextpose'
@@ -164,7 +167,8 @@ void save_nextpose(double x, double y, double z, double a, double b, double g) {
     nextpose.y = check_xyz_lim(-z + 0.36 + OFFSET_Y, 'y');
     nextpose.z = check_xyz_lim( y + 0.01 + OFFSET_Z, 'z');
 
-    delta_roll = atan((OFFSET_X*2-nextpose.x)/OFFSET_Y);
+    delta_roll = 0*atan((OFFSET_X*2-nextpose.x)/OFFSET_Y);
+    delta_roll = atan2(abs(MIN_X-nextpose.x), abs(MIN_Y-nextpose.y))*0;
 
     nextpose.a = check_angle_lim(BASE_A + delta_yaw); // yaw --> alpha : around z (theory)
     nextpose.b = check_angle_lim(BASE_B + delta_pitch); // pitch --> beta : around y (theory) up-down (hand)
@@ -253,15 +257,15 @@ double validate(double curr_pose, double next_pose){
 /*                                                                                             */
 /*                                                                                             */
 /***********************************************************************************************/
-void close_gripper(char * robot_ip) {
+void close_gripper() {
 
-    franka::Robot robot(robot_ip);
-    franka::Gripper gripper(robot_ip);
+    franka::Robot robot(ROBOT_IP);
+    franka::Gripper gripper(ROBOT_IP);
     gripper.homing();
     
 
     // Grasp the object: speed + force
-    double object_width = 3/1000.0; // [m]
+    double object_width = 5/1000.0; // [m]
     double gripper_speed = 0.2; // [m/s]
     double force = 140; // [N]
 
@@ -273,10 +277,31 @@ void close_gripper(char * robot_ip) {
 
 }
 
+struct pose get_ee_pose(std::array<double, 16> O_T_EE) {
 
-void init_panda_pva(char* robot_ip) {
+    struct pose c_target;
+    
+    c_target.x = O_T_EE[12];
+    c_target.y = O_T_EE[13];
+    c_target.z = O_T_EE[14];
 
-  franka::Robot robot(robot_ip);
+    // Calculate c_target.b (Pitch angle)
+    c_target.b = -asin(O_T_EE[2]);
+
+    // Calculate c_target.g (Yaw angle)
+    c_target.g = atan2(O_T_EE[1], O_T_EE[0]);
+
+    // Calculate c_target.a (Roll angle)
+    c_target.a = atan2(O_T_EE[6], O_T_EE[10]);
+
+    printf("%.3f | %.3f | %.3f \n", c_target.a*180/M_PI, c_target.b*180/M_PI, c_target.g*180/M_PI);
+
+    return c_target;
+}
+
+void init_panda_pva() {
+
+  franka::Robot robot(ROBOT_IP);
   robot.read([](const franka::RobotState& robot_state) {
 
     std::array<double, 16> final_pose;
@@ -284,11 +309,16 @@ void init_panda_pva(char* robot_ip) {
     final_pose = robot_state.O_T_EE_c;
     final_joints = robot_state.q_d;
 
+    printf("Joint 1: %.3f\n", final_joints[0]);
+    printf("Joint 2: %.3f\n", final_joints[1]);
+    printf("Joint 3: %.3f\n", final_joints[2]);
+    printf("Joint 4: %.3f\n", final_joints[3]);
+    printf("Joint 5: %.3f\n", final_joints[4]);
+    printf("Joint 6: %.3f\n", final_joints[5]);
+    printf("Joint 7: %.3f\n", final_joints[6]);
 
     if (mutex_nextpose.try_lock()) {
-      nextpose.x = final_pose[12]; 
-      nextpose.y = final_pose[13];
-      nextpose.z = final_pose[14];
+      nextpose = get_ee_pose(final_pose);
       mutex_nextpose.unlock();
     }
 
@@ -297,20 +327,18 @@ void init_panda_pva(char* robot_ip) {
 
 }
 
-#define PI 3.14159265
-
 double speed = 0;
 
-void move_end_effector(char* robot_ip) {
+void move_end_effector() {
 
   std::cout << "Are things ready ???" << std::endl;
   std::cin.ignore();
   
-  std::cout << robot_ip << std::endl;  
+  std::cout << ROBOT_IP << std::endl;  
 
   // Compliance parameters
   const double translational_stiffness{150.0};
-  const double rotational_stiffness{10.0};
+  const double rotational_stiffness{25.0};
   Eigen::MatrixXd stiffness(6, 6), damping(6, 6);
   stiffness.setZero();
   stiffness.topLeftCorner(3, 3) << translational_stiffness * Eigen::MatrixXd::Identity(3, 3);
@@ -325,7 +353,7 @@ void move_end_effector(char* robot_ip) {
   try {
 
     // connect to robot
-    franka::Robot robot(robot_ip);
+    franka::Robot robot(ROBOT_IP);
     setDefaultBehavior(robot);
     // load the kinematics and dynamics model
     franka::Model model = robot.loadModel();
@@ -359,10 +387,9 @@ void move_end_effector(char* robot_ip) {
       mutex_nextpose.unlock();                                    
 
       // Smooth robot replacement upon program start
-      if(speed < 4){
+      if(speed < MAX_ROB_SPEED){
         speed = speed + 0.001;
       }
-
 
       // actual end effector positioning command
       initial_state.O_T_EE[0] = cos(c_target.b)*cos(c_target.g);
@@ -378,6 +405,17 @@ void move_end_effector(char* robot_ip) {
       initial_state.O_T_EE[13] = c_target.y;
       initial_state.O_T_EE[14] = c_target.z;
       initial_state.O_T_EE[15] = 1;
+
+
+      // Joint 1: 0.243
+      // Joint 2: -1.591
+      // Joint 3: -1.880
+      // Joint 4: -2.134
+      // Joint 5: 1.784
+      // Joint 6: 2.841
+      // Joint 7: 0.388
+
+      initial_state.q_d[4] = 2.0;
 
 
       // equilibrium point is the initial position
@@ -408,7 +446,7 @@ void move_end_effector(char* robot_ip) {
       // orientation error
       // "difference" quaternion
       if (orientation_d.coeffs().dot(orientation.coeffs()) < 0.0) {
-        orientation.coeffs() << -0.5*orientation.coeffs();
+        orientation.coeffs() << -1*orientation.coeffs();
       }
       // "difference" quaternion
       Eigen::Quaterniond error_quaternion(orientation.inverse() * orientation_d);
@@ -450,44 +488,40 @@ void move_end_effector(char* robot_ip) {
 
 int main(int argc, char** argv) {
 
-  op_mode = 0; // 0: only reading SNN data, 1: closed loop SNN, 2: closed loop optitrack
-
   std::cout << "Hello NCS people :)\n";
   
 
   if (argc != 3) {
-    std::cerr << "Usage: " << argv[0] << " <robot-ip> <operating-mode>" << std::endl;
+    std::cerr << "Usage: " << argv[0] << "<operating-mode> <gripper-open-close>" << std::endl;
     return -1;
   }
-  
-  
-  op_mode = stoi(argv[2]);
-  printf("Mode: %d\n", op_mode);
+    
+  int op_mode = stoi(argv[1]); // ==1: read (udp source) and move |  !=1: read only
+  if(op_mode == 1){
+    printf("Operation Mode: Moving!\n");
+  } else {
+    printf("Operation Mode: NOT moving ... \n");
+  }
 
-  // When the program starts the robot 'moves' to its current position
-  // This is to prevent sudden motion
-  init_panda_pva(argv[1]);
+  // Robot 'moves' to its current position (upon program start): this is to prevent sudden motion
+  init_panda_pva();
 
-  // close_gripper(argv[1]);
+  int grip_oc = stoi(argv[2]); 
+  if(grip_oc == 1){
+    printf("Opening/Closing gripper\n");
+    close_gripper();
+  } 
+
+
    
 
   switch(op_mode){
-
-    // This mode is only for reading incoming data (from sleipner or else ... through tcp)
-    case 0:
-      {
-        std::thread snn_process (get_xyz_data);
-        snn_process.join(); 
-        printf("Stopped getting incoming data\n");
-        break;
-      }
-      
-
-    // This mode is for reading incoming data (from sleipner or else ... through tcp) AND making the robot follow
+   
+    // This mode is for reading incoming data (from sleipner or else) AND making the robot follow
     case 1:
       {
         std::thread snn_process (get_xyz_data);
-        std::thread mot_process (move_end_effector, argv[1]);  
+        std::thread mot_process (move_end_effector);  
         snn_process.join(); 
         printf("Stopped getting incoming data\n");
         mot_process.join();
@@ -496,9 +530,9 @@ int main(int argc, char** argv) {
 
     default:
       {
-        std::thread mot_process (move_end_effector, argv[1]);  
-        mot_process.join();
-        printf("Operating mode unavailable\n");
+        std::thread snn_process (get_xyz_data);
+        snn_process.join(); 
+        printf("Stopped getting incoming data\n");
         break;
       }
 

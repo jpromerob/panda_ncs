@@ -1,6 +1,7 @@
 import numpy as np
 import math
 
+
 '''
 This function sets the camera poses based on manual readings from optitrack (using camera marker 'hat')
 '''
@@ -85,14 +86,16 @@ def set_vir_poses(angles, v_poses, presence):
     
 
 ''' Translation Matrices'''
-def get_transmats(cam_poses):
+def get_transmats(viewer_poses):
     
-    mat_tran = np.zeros((4,4,3))
-    for i in range(3): # Cam 1, 2, 3
+    nb_viewers = viewer_poses.shape[0]
+
+    mat_tran = np.zeros((4,4,nb_viewers))
+    for i in range(nb_viewers): # Cam 1, 2, 3
         
-        cx = cam_poses[i,0]
-        cy = cam_poses[i,1]
-        cz = cam_poses[i,2]
+        cx = viewer_poses[i,0]
+        cy = viewer_poses[i,1]
+        cz = viewer_poses[i,2]
 
         # Transformation matrices (translation + rotations around x, y, z)
         mat_tran[:,:,i] = np.array([[1,0,0,cx],
@@ -104,14 +107,16 @@ def get_transmats(cam_poses):
     
     
 '''Rotation Matrices'''
-def get_rotmats(cam_poses):
+def get_rotmats(viewer_poses):
+
+    nb_viewers = viewer_poses.shape[0]
     
-    mat_rota = np.zeros((4,4,3))
-    for i in range(3): # Cam 1, 2, 3
+    mat_rota = np.zeros((4,4,nb_viewers))
+    for i in range(nb_viewers): # Cam 1, 2, 3
         
-        alpha = cam_poses[i,3]
-        beta = cam_poses[i,4] 
-        gamma = cam_poses[i,5]
+        alpha = viewer_poses[i,3]
+        beta = viewer_poses[i,4] 
+        gamma = viewer_poses[i,5]
 
 
         mat_rotx = np.array([[1,0,0,0],
@@ -140,9 +145,12 @@ This function returns object pose in three perspectives (one per camera)
 '''
 def get_perspectives(c2w, ground_truth):
     
-    perspective = np.zeros((4,3)) # coordinates|cameras
+    # Number of cameras (viewers)
+    nb_viewers = c2w.shape[2]
+
+    perspective = np.zeros((4,nb_viewers)) # coordinates|cameras
     # Checking output of each camera
-    for i in range(3): # Cam 1, 2, 3
+    for i in range(nb_viewers): # Cam 1, 2, 3
         w2c = np.linalg.inv(c2w[:,:,i])
         perspective[:, i] = w2c.dot(ground_truth)
 

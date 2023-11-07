@@ -56,7 +56,6 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
 
     opt_in_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     opt_in_socket.bind((IP_PANDA, 5000))  
-    vis_out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     
     mrg_out_socket = []
     mrg_address = []
