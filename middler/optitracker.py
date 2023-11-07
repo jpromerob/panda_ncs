@@ -57,8 +57,9 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
     opt_in_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     opt_in_socket.bind((IP_PANDA, 5000))  
     
-    mrg_out_socket = []
-    mrg_address = []
+    mrg_out_socket = [] # mrg as in MeRGer
+    mrg_address_euler = []
+    mrg_address_quatr = []
     # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
     # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
     # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
@@ -70,9 +71,13 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
     mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
     mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
 
-    mrg_address.append((IP_PANDA, 3001))
-    mrg_address.append((IP_PANDA, 3002))
-    mrg_address.append((IP_PANDA, 3003))
+    mrg_address_euler.append((IP_PANDA, 3001))
+    mrg_address_euler.append((IP_PANDA, 3002))
+    mrg_address_euler.append((IP_PANDA, 3003))
+
+    mrg_address_quatr.append((IP_PANDA, 3601))
+    mrg_address_quatr.append((IP_PANDA, 3602))
+    mrg_address_quatr.append((IP_PANDA, 3603))
 
     
     plotter_address = ('172.16.222.46', 5999)
@@ -84,10 +89,12 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
     while True:
         trash_counter+=1
         data, addr = opt_in_socket.recvfrom(1024)
-        values = struct.unpack('6d', data)
+        values = struct.unpack('10d', data)
+        q_array[0] = round(values[6],3)
         for i in range(3): # we forget the angles for now
             xyz_array[i] = round(values[i],3)
             abg_array[i] = round(values[i+3],3)
+            q_array[i+1] = round(values[i+7],3)
 
         if trash_counter % 100 == 0:
             alpha_deg = round(abg_array[0],2)
@@ -119,20 +126,26 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
                 px_b = (abg_array[1]*math.pi/180 - cam_poses[i][4])/math.pi # from -1 to 1 (instead of -pi to pi)
                 px_g = (abg_array[2]*math.pi/180 - cam_poses[i][5])/math.pi # from -1 to 1 (instead of -pi to pi)
 
+                px_qw = q_array[0]
+                px_qx = q_array[1]
+                px_qy = q_array[2]
+                px_qz = q_array[3]
                 # if trash_counter % 100 == 0:
                 #     alpha_deg = round(px_a*180/math.pi,2)
                 #     beta_deg =  round(px_b*180/math.pi,2)
                 #     gamma_deg = round(px_g*180/math.pi,2)
                 #     print(f"cam #{i+1} {alpha_deg} | {beta_deg} | {gamma_deg}")
 
-                data = struct.pack('fffffff', px_x, px_y, px_z, px_a, px_b, px_g, presence[i])
+                data_euler = struct.pack('fffffff', px_x, px_y, px_z, px_a, px_b, px_g, presence[i])
+                data_quatr = struct.pack('ffffffff', px_x, px_y, px_z, px_qw, px_qx, px_qy, px_qz, presence[i])
                 
-                mrg_out_socket[i].sendto(data, mrg_address[i])
+                mrg_out_socket[i].sendto(data_euler, mrg_address_euler[i])
+                mrg_out_socket[i].sendto(data_quatr, mrg_address_quatr[i])
     
     plotter_socket.close()        
 
 def get_optitrack_pose():
-    os.system("./optitracker.exe")
+    os.system("./new_optitracker.exe")
 
 def parse_args():
 
@@ -151,6 +164,7 @@ if __name__ == '__main__':
 
     xyz_array = multiprocessing.Array('d', [0.0,0.0,0.0])
     abg_array = multiprocessing.Array('d', [0.0,0.0,0.0])
+    q_array = multiprocessing.Array('d', [0.0,0.0,0.0,0.0])
     receiver = multiprocessing.Process(target=get_pixel_spaces_from_optitrack, args=(args.disable_opt_px,))
     sender = multiprocessing.Process(target=get_optitrack_pose)
     receiver.start()

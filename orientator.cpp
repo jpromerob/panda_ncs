@@ -61,11 +61,12 @@ typedef struct payload_t {
 #define MAX_Y -0.20
 #define MAX_Z 0.80
 
-# define MAX_ROB_SPEED 4.0
+# define MAX_ROB_SPEED 6.0
 
-#define BASE_A -100*M_PI/180
+#define BASE_A -90*M_PI/180
 #define BASE_B 90*M_PI/180
-#define BASE_G -150*M_PI/180 // rotate around z (right-hand rule)
+#define BASE_G -120*M_PI/180 // rotate around z (right-hand rule)
+#define MAX_D_ANG 90*M_PI/180
 
 #pragma pack()
 
@@ -84,12 +85,15 @@ typedef struct pose
 } pose;
 
 std::mutex mutex_nextpose;
+std::mutex mutex_rt_aid;
 
 /* Current Target */
 pose c_target;
 
 /* What the optitrack sees (in Panda posedinate framework)*/
 pose nextpose;
+
+pose rt_aid;
 
 
 
@@ -143,8 +147,42 @@ double check_xyz_lim(double value, char axis) {
 /*                                                                                             */
 /*                                                                                             */
 /***********************************************************************************************/
-double check_angle_lim(double value){
-  double final_value = value;
+double check_angle_lim(double value, char angle) {
+
+  double final_value = 0;
+  double base = 0;
+
+  if(angle == 'a') {
+    base = BASE_A;
+    // printf("alpha:\n");
+  }
+  if(angle == 'b') {
+    base = BASE_B;
+    // printf("beta:\n");
+  }
+  if(angle == 'g') {
+    base = BASE_G;
+    // printf("gamma:\n");
+  }
+
+  double mag_diff = abs(value-base);
+  double sign = 0;
+  if(value < base){
+    sign = -1;
+  } else {
+    sign = 1;
+  }
+
+  // printf("\tdesired: %.3f | base: %.3f | mag_diff: %.3f | sign: .%3f\n", value, base, mag_diff, sign);
+
+  if(mag_diff <= MAX_D_ANG){
+    final_value = value;
+  } else {
+    final_value = base - sign*MAX_D_ANG;
+  }
+
+  // printf("\tfinal value: %0.3f\n", final_value);
+
   return final_value;
 }
 
@@ -158,21 +196,28 @@ double check_angle_lim(double value){
 /***********************************************************************************************/
 void save_nextpose(double x, double y, double z, double a, double b, double g) {
 
-  double delta_pitch = 0; 
-  double delta_roll = 0 ; 
-  double delta_yaw = 0; 
+  double delta_a = 0; // rotation on horizontal plane: neg towards Jorg
+  double delta_b = 0 ; // hand rotation: + towards cam2
+  double delta_g = 0; 
+
+  if (mutex_rt_aid.try_lock()) {
+    delta_a = rt_aid.a;
+    delta_b = rt_aid.b;
+    delta_g = rt_aid.g;
+    mutex_rt_aid.unlock();
+  }
 
   if (mutex_nextpose.try_lock()) {
     nextpose.x = check_xyz_lim( x + 0.35 + OFFSET_X, 'x'); 
     nextpose.y = check_xyz_lim(-z + 0.36 + OFFSET_Y, 'y');
     nextpose.z = check_xyz_lim( y + 0.01 + OFFSET_Z, 'z');
 
-    delta_roll = 0*atan((OFFSET_X*2-nextpose.x)/OFFSET_Y);
-    delta_roll = atan2(abs(MIN_X-nextpose.x), abs(MIN_Y-nextpose.y))*0;
+    // delta_roll = 0*atan((OFFSET_X*2-nextpose.x)/OFFSET_Y);
+    // delta_roll = atan2(abs(MIN_X-nextpose.x), abs(MIN_Y-nextpose.y))*0;
 
-    nextpose.a = check_angle_lim(BASE_A + delta_yaw); // yaw --> alpha : around z (theory)
-    nextpose.b = check_angle_lim(BASE_B + delta_pitch); // pitch --> beta : around y (theory) up-down (hand)
-    nextpose.g = check_angle_lim(BASE_G + delta_roll); // roll --> gamma : around x (theory) left-right (hand)
+    nextpose.a = check_angle_lim(BASE_A+delta_a, 'a'); // yaw --> alpha : around z (theory)
+    nextpose.b = check_angle_lim(BASE_B+delta_b, 'b'); // pitch --> beta : around y (theory) up-down (hand)
+    nextpose.g = check_angle_lim(BASE_G+delta_g, 'g'); // roll --> gamma : around x (theory) left-right (hand)
     mutex_nextpose.unlock();
   }
 
@@ -180,8 +225,68 @@ void save_nextpose(double x, double y, double z, double a, double b, double g) {
 
 }
 
+#define RT_AID_FN "rt_aid.txt"
+
+struct pose parseFile() {
+    struct pose result = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    FILE *file;
+
+    // Open the file for reading
+    file = fopen(RT_AID_FN, "r");
+    if (file == NULL) {
+        printf("Failed to open the file %s\n", RT_AID_FN);
+        return result;
+    }
+
+    // Read and parse the data from the file
+    if (fscanf(file, "alpha: %lf\nbeta: %lf\ngamma: %lf", &result.a, &result.b, &result.g) != 3) {
+        printf("Failed to parse the data from the file.\n");
+    }
+    
+
+    // Close the file
+    fclose(file);
+
+    result.a = result.a*M_PI/180;
+    result.b = result.b*M_PI/180;
+    result.g = result.g*M_PI/180;
+
+    return result;
+}
 
 
+/***********************************************************************************************/
+/* This function reads alpha, beta, gamma from a file                                          */
+/*                                                                                             */
+/*                                                                                             */
+/*                                                                                             */
+/*                                                                                             */
+/***********************************************************************************************/
+int get_rt_input(){
+  while(1){
+    if (mutex_rt_aid.try_lock()) {
+      pose aux_aid = parseFile();
+      if(aux_aid.a != rt_aid.a){
+        printf("New delta alpha\n");
+        rt_aid.a = aux_aid.a;
+      }
+      if(aux_aid.b != rt_aid.b){
+        printf("New delta beta\n");
+        rt_aid.b = aux_aid.b;
+      }
+      if(aux_aid.g != rt_aid.g){
+        printf("New delta gamma\n");
+        rt_aid.g = aux_aid.g;
+      }
+      // printf("%.3f | %.3f | %.3f\n", rt_aid.a*180/M_PI, rt_aid.b*180/M_PI, rt_aid.g*180/M_PI);
+      mutex_rt_aid.unlock();
+    }
+    sleep(1);
+
+  }
+
+  return 0;
+}
 
 
 /***********************************************************************************************/
@@ -224,6 +329,7 @@ int get_xyz_data()
           perror("recvfrom");
           return 1;
       }
+      
       save_nextpose(receivedPayload.x, receivedPayload.y, receivedPayload.z,
                     receivedPayload.a, receivedPayload.b, receivedPayload.g);
 
@@ -407,21 +513,24 @@ void move_end_effector() {
       initial_state.O_T_EE[15] = 1;
 
 
-      // Joint 1: 0.243
-      // Joint 2: -1.591
-      // Joint 3: -1.880
-      // Joint 4: -2.134
-      // Joint 5: 1.784
-      // Joint 6: 2.841
-      // Joint 7: 0.388
-
       initial_state.q_d[4] = 2.0;
 
 
-      // equilibrium point is the initial position
-      Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
-      Eigen::Vector3d position_d(initial_transform.translation());
-      Eigen::Quaterniond orientation_d(initial_transform.linear());
+      // Eigen::Quaterniond orientation_d = Eigen::AngleAxisd(c_target.a, Eigen::Vector3d::UnitX())
+      //                                  * Eigen::AngleAxisd(c_target.b, Eigen::Vector3d::UnitY())
+      //                                  * Eigen::AngleAxisd(c_target.g, Eigen::Vector3d::UnitZ());
+      // orientation_d.normalize();
+      // Eigen::Matrix4d transform_d = Eigen::Matrix4d::Identity();
+      // transform_d.block<3, 3>(0, 0) = orientation_d.toRotationMatrix();
+      // transform_d(0, 3) = c_target.x;
+      // transform_d(1, 3) = c_target.y;
+      // transform_d(2, 3) = c_target.z;
+      // Eigen::Vector3d position_d;
+      // position_d << transform_d(0, 3), transform_d(1, 3), transform_d(2, 3);
+
+      Eigen::Affine3d transform_d(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
+      Eigen::Vector3d position_d(transform_d.translation());
+      Eigen::Quaterniond orientation_d(transform_d.linear());
 
       // get state variables
       std::array<double, 7> coriolis_array = model.coriolis(robot_state);
@@ -520,11 +629,12 @@ int main(int argc, char** argv) {
     // This mode is for reading incoming data (from sleipner or else) AND making the robot follow
     case 1:
       {
+        std::thread aid_process (get_rt_input);
         std::thread snn_process (get_xyz_data);
         std::thread mot_process (move_end_effector);  
         snn_process.join(); 
-        printf("Stopped getting incoming data\n");
         mot_process.join();
+        aid_process.join();
         break;
       }
 
@@ -532,11 +642,11 @@ int main(int argc, char** argv) {
       {
         std::thread snn_process (get_xyz_data);
         snn_process.join(); 
-        printf("Stopped getting incoming data\n");
         break;
       }
 
   }
+  printf("Stopped getting incoming data\n");
 
   return 0;
 }

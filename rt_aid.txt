@@ -1,0 +1,3 @@
+alpha: 00
+beta: 0
+gamma: 0
