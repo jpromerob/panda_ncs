@@ -73,7 +73,7 @@ def pos_server(merge_queue, cam_id, resolution):
 #                                                          COMBINER                                                          #
 ##############################################################################################################################
 
-def combiner(merge_queue, ip_address, port_nb):
+def combiner(merge_queue, ip_address, port_nb, resolution):
 
     time.sleep(1)
     μ, Σ, offset = update_gaussians([1,1,1])
@@ -158,8 +158,8 @@ def combiner(merge_queue, ip_address, port_nb):
                 old_pa[cam_id-1] = pa[cam_id-1]
                 old_pb[cam_id-1] = pb[cam_id-1]
                 old_pg[cam_id-1] = pg[cam_id-1]
-                px[cam_id-1] = datum[1]*320
-                py[cam_id-1] = datum[2]*240
+                px[cam_id-1] = datum[1]*int(resolution[0]/2)
+                py[cam_id-1] = datum[2]*int(resolution[1]/2)
                 pz[cam_id-1] = datum[3] # @TODO: how to interpret Z? (-1 to 1?) ... what;s the scaling?
                 pa[cam_id-1] = datum[4]*math.pi # @TODO: assuming that angles in [-1..1] (from -pi to pi)
                 pb[cam_id-1] = datum[5]*math.pi
@@ -214,9 +214,9 @@ def combiner(merge_queue, ip_address, port_nb):
 
 
         vertex_xyz = np.zeros(4)
-        vertex_xyz[0] = 0*-0.050 # x: -0.050 for hammer and -0.050 for nail
-        vertex_xyz[1] = 0*-0.000 # y
-        vertex_xyz[2] = 0* 0.135 # z
+        vertex_xyz[0] = -0.050 # x: -0.050 for hammer and -0.050 for nail
+        vertex_xyz[1] = -0.000 # y
+        vertex_xyz[2] =  0.135 # z
         vertex_xyz[3] = 1 # just like that
 
         vertex_abg = np.zeros(4)
@@ -367,7 +367,7 @@ if __name__ == "__main__":
 
 
     loader = multiprocessing.Process(target=parse_params)
-    merger = multiprocessing.Process(target=combiner, args=(merge_queue, ip_address, port_nb,))
+    merger = multiprocessing.Process(target=combiner, args=(merge_queue, ip_address, port_nb, resolution,))
 
     loader.start()
     merger.start()
