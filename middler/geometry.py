@@ -10,28 +10,28 @@ def set_cam_poses():
     cam_poses = np.zeros((3,6))
 
     # Cam 1
-    cam_poses[0,0] = -0.135 # cam1:cx
-    cam_poses[0,1] = 0.923 # cam1:cy
-    cam_poses[0,2] = 1.404 # cam1:cz
-    cam_poses[0,3] = (math.pi/180)*(-71.206) # cam1:alpha
-    cam_poses[0,4] = (math.pi/180)*(11.003) # cam1:beta
-    cam_poses[0,5] = (math.pi/180)*(-23.995) # cam1:gamma
+    cam_poses[0,0] = -0.149 # cam1:cx
+    cam_poses[0,1] =  0.962 # cam1:cy
+    cam_poses[0,2] =  1.444 # cam1:cz
+    cam_poses[0,3] = (math.pi/180)*(-64.560) # cam1:alpha
+    cam_poses[0,4] = (math.pi/180)*(8.264) # cam1:beta
+    cam_poses[0,5] = (math.pi/180)*(-10.102) # cam1:gamma
 
     # Cam 2
-    cam_poses[1,0] = -0.652 # cam2:cx
-    cam_poses[1,1] = 0.931 # cam2:cy
-    cam_poses[1,2] = 1.420 # cam2:cz
-    cam_poses[1,3] = (math.pi/180)*(-49.949) # cam2:alpha
-    cam_poses[1,4] = (math.pi/180)*(-46.840) # cam2:beta
-    cam_poses[1,5] = (math.pi/180)*(-12.425) # cam2:gamma
+    cam_poses[1,0] = -0.628 # cam2:cx
+    cam_poses[1,1] =  0.959 # cam2:cy
+    cam_poses[1,2] =  1.437 # cam2:cz
+    cam_poses[1,3] = (math.pi/180)*(-59.877) # cam2:alpha
+    cam_poses[1,4] = (math.pi/180)*(-36.574) # cam2:beta
+    cam_poses[1,5] = (math.pi/180)*(2.183) # cam2:gamma
 
     # Cam 3
-    cam_poses[2,0] = -0.720 # cam3:cx
-    cam_poses[2,1] = 0.918 # cam3:cy
-    cam_poses[2,2] = 0.553 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(167.364) # cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-57.342) # cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(125.524) # cam3:gamma
+    cam_poses[2,0] = -0.709 # cam3:cx
+    cam_poses[2,1] =  0.963 # cam3:cy
+    cam_poses[2,2] =  0.578 # cam3:cz
+    cam_poses[2,3] = (math.pi/180)*(163.618) # cam3:alpha
+    cam_poses[2,4] = (math.pi/180)*(-54.277) # cam3:beta
+    cam_poses[2,5] = (math.pi/180)*(130.666) # cam3:gamma
 
     return cam_poses
 
@@ -42,12 +42,12 @@ def set_focal_lengths():
 
     focl = np.zeros((2,3))
 
-    focl[0,0] = 657.695274 
-    focl[0,1] = 695.410317
-    focl[0,2] = 775.276734
-    focl[1,0] = 656.424014 
-    focl[1,1] = 690.799429
-    focl[1,2] = 774.173048
+    focl[0,0] = 1753.384037045293
+    focl[0,1] = 1715.200245213357
+    focl[0,2] = 1617.692730733773
+    focl[1,0] = 1753.384037045293
+    focl[1,1] = 1715.200245213357
+    focl[1,2] = 1617.692730733773
 
     return focl
 
@@ -58,15 +58,21 @@ def set_pp_coordinates():
 
     pp_coor = np.zeros((2,3))
 
-    pp_coor[0,0] = 334.641334 - 0
-    pp_coor[0,1] = 323.043462 - 5
-    pp_coor[0,2] = 310.350021 - 5
-    pp_coor[1,0] = 256.919557 + 10
-    pp_coor[1,1] = 227.992238 - 40
-    pp_coor[1,2] = 250.150330 + 0
+    delta_x_1 = 30
+    delta_y_1 = 15
+    delta_x_2 = 5
+    delta_y_2 = 18
+    delta_x_3 = 12
+    delta_y_3 = 15
+
+    pp_coor[0,0] = 610.8581899727941 + delta_x_1
+    pp_coor[0,1] = 607.7901983561185 + delta_x_2
+    pp_coor[0,2] = 605.2679811999376 + delta_x_3
+    pp_coor[1,0] = 369.5428619476682 + delta_y_1
+    pp_coor[1,1] = 343.5051375784078 + delta_y_2
+    pp_coor[1,2] = 351.0244540850604 + delta_y_3
 
     return pp_coor
-
 '''
 Poses of virtual cameras with respect to their corresponding real camera space
 '''
@@ -195,10 +201,10 @@ def get_angles_from_pos(obj_pose):
 
     return angles
 
-def get_dvs_from_angles(angles, focl, pp_coor, cam_id):
+def get_dvs_from_angles(angles, focl, res_y, pp_coor, cam_id):
 
     px = pp_coor[0,cam_id-1]+int(math.tan((angles[0]*math.pi/180))*focl[0,cam_id-1])
-    py = 480-(pp_coor[1,cam_id-1]-int(math.tan((angles[1]*math.pi/180))*focl[1,cam_id-1]))
+    py = res_y-(pp_coor[1,cam_id-1]-int(math.tan((angles[1]*math.pi/180))*focl[1,cam_id-1]))
 
 
     return px, py

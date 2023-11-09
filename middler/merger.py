@@ -8,6 +8,7 @@ import time
 import math
 import datetime
 import struct 
+import argparse
 
 from geometry import *
 from gaussians import *
@@ -38,11 +39,13 @@ class PayloadPanda(Structure):
 #                                                    POSITION UDP SERVER                                                     #
 ##############################################################################################################################
 
-def pos_server(merge_queue, cam_id):
+def pos_server(merge_queue, cam_id, resolution):
 
 
     port_nb = 3000 + cam_id 
 
+    off_x = int(resolution[0]/2)
+    off_y = int(resolution[1]/2)
 
 
     server_addr = ('172.16.222.48', port_nb)
@@ -59,7 +62,7 @@ def pos_server(merge_queue, cam_id):
 
         payload_in = PayloadSleipner.from_buffer_copy(data) 
         merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.a, payload_in.b, payload_in.g, payload_in.p])
-        message = f"{int(payload_in.x*320+320)},{int(payload_in.y*240+240)}"
+        message = f"{int(payload_in.x*off_x+off_x)},{int(payload_in.y*off_y+off_y)}"
         vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
         
 
@@ -128,7 +131,7 @@ def combiner(merge_queue, ip_address, port_nb):
 
     counter = 0
     print_counter = 1000
-    max_counter = 1400
+    max_counter = 700
     elapsed = np.zeros(max_counter)
 
     while(True):
@@ -211,9 +214,9 @@ def combiner(merge_queue, ip_address, port_nb):
 
 
         vertex_xyz = np.zeros(4)
-        vertex_xyz[0] = -0.050 # x: -0.050 for hammer and -0.050 for nail
-        vertex_xyz[1] = -0.000 # y
-        vertex_xyz[2] =  0.135 # z
+        vertex_xyz[0] = 0*-0.050 # x: -0.050 for hammer and -0.050 for nail
+        vertex_xyz[1] = 0*-0.000 # y
+        vertex_xyz[2] = 0* 0.135 # z
         vertex_xyz[3] = 1 # just like that
 
         vertex_abg = np.zeros(4)
@@ -242,7 +245,7 @@ def combiner(merge_queue, ip_address, port_nb):
         if counter < max_counter-1:
             counter += 1
         else:
-            print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
+            # print("Elapsed time: " + str(int(np.mean(elapsed))) + " [μs].")
             x_short = round(x,3)
             y_short = round(y,3)
             z_short = round(z,3)
@@ -253,6 +256,7 @@ def combiner(merge_queue, ip_address, port_nb):
             counter = 0
 
         
+        # print(f"{x} | {y} | {z}")
         panda_socket.sendto(PayloadPanda(x, y, z, alpha, beta, gamma), panda_address)
 
    
@@ -327,12 +331,22 @@ def update_gaussians(presence):
     return μ, Σ, offset
 
 
+def parse_args():
+
+    parser = argparse.ArgumentParser(description='Merger')
+    
+    parser.add_argument('-x', '--res-x', type= int, help="Image scale", default=1280)
+    parser.add_argument('-y', '--res-y', type= int, help="Image scale", default=720)
+
+    return parser.parse_args()
 
 if __name__ == "__main__":
     
+    args = parse_args()
 
     port_nb = 2600
     ip_address = "172.16.222.48"
+    resolution = [args.res_x,args.res_y]
 
     merge_queue = multiprocessing.Queue()
 
@@ -347,9 +361,9 @@ if __name__ == "__main__":
     pm = multiprocessing.Array('d', [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0])
 
 
-    pos_cam_1 = multiprocessing.Process(target=pos_server, args=(merge_queue,1,))
-    pos_cam_2 = multiprocessing.Process(target=pos_server, args=(merge_queue,2,))
-    pos_cam_3 = multiprocessing.Process(target=pos_server, args=(merge_queue,3,))
+    pos_cam_1 = multiprocessing.Process(target=pos_server, args=(merge_queue,1,resolution,))
+    pos_cam_2 = multiprocessing.Process(target=pos_server, args=(merge_queue,2,resolution,))
+    pos_cam_3 = multiprocessing.Process(target=pos_server, args=(merge_queue,3,resolution,))
 
 
     loader = multiprocessing.Process(target=parse_params)

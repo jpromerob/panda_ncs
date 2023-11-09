@@ -42,7 +42,7 @@ def presentiatior():
             yield output
 
 
-def get_pixel_spaces_from_optitrack(disable_opt_px):
+def get_pixel_spaces_from_optitrack(args):
 
     cam_poses = set_cam_poses()
     r2w = get_rotmats(cam_poses)
@@ -60,12 +60,6 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
     mrg_out_socket = [] # mrg as in MeRGer
     mrg_address_euler = []
     mrg_address_quatr = []
-    # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    # mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    # mrg_out_socket[0].connect((IP_PANDA, 3001) )
-    # mrg_out_socket[1].connect((IP_PANDA, 3002) )
-    # mrg_out_socket[2].connect((IP_PANDA, 3000) )
 
     mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
     mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
@@ -105,16 +99,27 @@ def get_pixel_spaces_from_optitrack(disable_opt_px):
         xyz_ground_truth = [xyz_array[0], xyz_array[1], xyz_array[2], 1]
         plotter_socket.sendto(struct.pack('ffffff', xyz_array[0], xyz_array[1], xyz_array[2], abg_array[0], abg_array[1], abg_array[2]), plotter_address)
 
-        if not disable_opt_px:
+        off_x = int(args.res_x/2)
+        off_y = int(args.res_y/2)
+        xy_scalers = np.ones((3,2))
+
+        xy_scalers[0][0] = 1
+        xy_scalers[0][1] = 1
+        xy_scalers[1][0] = 1
+        xy_scalers[1][1] = 1
+        xy_scalers[2][0] = 1
+        xy_scalers[2][1] = 1
+
+        if not args.disable_opt_px:
             perspective = get_perspectives(c2w, xyz_ground_truth)
             px_space_array = np.zeros(6)
             presence = [1,1,1] #next(gen_presence)
             for i in range(3): # for each camera
                 angles = get_angles_from_pos(perspective[:,i])
-                px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_angles(angles, focl, pp_coor, i+1)
+                px_space_array[i*2], px_space_array[i*2+1] = get_dvs_from_angles(angles, focl, args.res_y, pp_coor, i+1)
                                 
-                px_x = (px_space_array[i*2]-320)/320
-                px_y = (px_space_array[i*2+1]-240)/240
+                px_x = (px_space_array[i*2]-off_x)/off_x
+                px_y = (px_space_array[i*2+1]-off_y)/off_y
                 px_z = 0
 
                 # To calculate the orientation (roll, pitch, yaw) 
@@ -152,6 +157,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Optitracker')
     
     parser.add_argument('-d', '--disable-opt-px', action='store_true', help="Disable Optitrack's pixel space")
+    parser.add_argument('-x', '--res-x', type= int, help="Image scale", default=1280)
+    parser.add_argument('-y', '--res-y', type= int, help="Image scale", default=720)
 
     return parser.parse_args()
         
@@ -165,7 +172,7 @@ if __name__ == '__main__':
     xyz_array = multiprocessing.Array('d', [0.0,0.0,0.0])
     abg_array = multiprocessing.Array('d', [0.0,0.0,0.0])
     q_array = multiprocessing.Array('d', [0.0,0.0,0.0,0.0])
-    receiver = multiprocessing.Process(target=get_pixel_spaces_from_optitrack, args=(args.disable_opt_px,))
+    receiver = multiprocessing.Process(target=get_pixel_spaces_from_optitrack, args=(args,))
     sender = multiprocessing.Process(target=get_optitrack_pose)
     receiver.start()
     sender.start()
