@@ -145,9 +145,9 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, e, axs):
     axs[3].clear()
     axs[3].set_facecolor(SUB_BKG_COLOR) 
     axs[3].plot(t, e, color='w')
-    axs[3].text(t[0], 20, txt_e, fontsize='xx-large', color='w')
+    axs[3].text(t[0], 40, txt_e, fontsize='xx-large', color='w')
     axs[3].xaxis.set_visible(False)
-    axs[3].set_ylim([0,25])
+    axs[3].set_ylim([0,50])
     axs[3].set_ylabel('e')
 
     axs[0].set_title(f"Object Position in Workspace", fontsize='xx-large')
