@@ -141,12 +141,12 @@ def visualize_data(args):
                     cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=ring_th)
 
 
-                    # center of top left
-                    cv2.circle(image, (int(mgh+rxy[0]/2), int(mgv+rxy[1]/2)), int(radius*args.scale), orange, thickness=ring_th)
-                    # center of top right
-                    cv2.circle(image, (int(mgh+mgi+rxy[0]*3/2), int(mgv+rxy[1]/2)), int(radius*args.scale), orange, thickness=ring_th)
-                    # center of bottom left
-                    cv2.circle(image, (int(mgh+rxy[0]/2), int(mgv+mgi+rxy[1]*3/2)), int(radius*args.scale), orange, thickness=ring_th)
+                    # # center of top left
+                    # cv2.circle(image, (int(mgh+rxy[0]/2), int(mgv+rxy[1]/2)), int(radius*args.scale), orange, thickness=ring_th)
+                    # # center of top right
+                    # cv2.circle(image, (int(mgh+mgi+rxy[0]*3/2), int(mgv+rxy[1]/2)), int(radius*args.scale), orange, thickness=ring_th)
+                    # # center of bottom left
+                    # cv2.circle(image, (int(mgh+rxy[0]/2), int(mgv+mgi+rxy[1]*3/2)), int(radius*args.scale), orange, thickness=ring_th)
 
                     cv2.imshow(window_name, image)
                     cv2.waitKey(1)
