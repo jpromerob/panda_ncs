@@ -69,7 +69,7 @@ def rt_xyz(i, xyz_ncs, xyz_opt, t, e, axs):
     # Add x and y to lists
     t.append(datetime.datetime.now().strftime('%H:%M:%S.%f'))
     
-    e_full = round(math.sqrt(e_x**2+e_y**2+e_z**2)/3,1)
+    e_full = round(math.sqrt(e_x**2+e_y**2+e_z**2),1)
     e.append(e_full)
 
     xyz_ncs.x.append(xyz_ncs.xyz[0])
