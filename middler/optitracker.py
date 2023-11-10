@@ -150,7 +150,7 @@ def get_pixel_spaces_from_optitrack(args):
     plotter_socket.close()        
 
 def get_optitrack_pose():
-    os.system("./new_optitracker.exe")
+    os.system("./optitracker.exe")
 
 def parse_args():
 
