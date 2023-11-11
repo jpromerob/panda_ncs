@@ -10,28 +10,28 @@ def set_cam_poses():
     cam_poses = np.zeros((3,6))
 
     # Cam 1
-    cam_poses[0,0] = -0.149 # cam1:cx
-    cam_poses[0,1] =  0.962 # cam1:cy
-    cam_poses[0,2] =  1.444 # cam1:cz
-    cam_poses[0,3] = (math.pi/180)*(-64.560) # cam1:alpha
-    cam_poses[0,4] = (math.pi/180)*(8.264) # cam1:beta
-    cam_poses[0,5] = (math.pi/180)*(-10.102) # cam1:gamma
+    cam_poses[0,0] = -0.156 # cam1:cx
+    cam_poses[0,1] =  0.964 # cam1:cy
+    cam_poses[0,2] =  1.448 # cam1:cz
+    cam_poses[0,3] = (math.pi/180)*(-65.146) # cam1:alpha
+    cam_poses[0,4] = (math.pi/180)*(7.689) # cam1:beta
+    cam_poses[0,5] = (math.pi/180)*(-8.290) # cam1:gamma
 
     # Cam 2
-    cam_poses[1,0] = -0.628 # cam2:cx
+    cam_poses[1,0] = -0.632 # cam2:cx
     cam_poses[1,1] =  0.959 # cam2:cy
-    cam_poses[1,2] =  1.437 # cam2:cz
-    cam_poses[1,3] = (math.pi/180)*(-59.877) # cam2:alpha
-    cam_poses[1,4] = (math.pi/180)*(-36.574) # cam2:beta
-    cam_poses[1,5] = (math.pi/180)*(2.183) # cam2:gamma
+    cam_poses[1,2] =  1.441 # cam2:cz
+    cam_poses[1,3] = (math.pi/180)*(-60.602) # cam2:alpha
+    cam_poses[1,4] = (math.pi/180)*(-35.994) # cam2:beta
+    cam_poses[1,5] = (math.pi/180)*(2.418) # cam2:gamma
 
     # Cam 3
-    cam_poses[2,0] = -0.709 # cam3:cx
+    cam_poses[2,0] = -0.714 # cam3:cx
     cam_poses[2,1] =  0.963 # cam3:cy
-    cam_poses[2,2] =  0.578 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(163.618) # cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-54.277) # cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(130.666) # cam3:gamma
+    cam_poses[2,2] =  0.580 # cam3:cz
+    cam_poses[2,3] = (math.pi/180)*(164.416) # cam3:alpha
+    cam_poses[2,4] = (math.pi/180)*(-54.450) # cam3:beta
+    cam_poses[2,5] = (math.pi/180)*(129.468) # cam3:gamma
 
     return cam_poses
 
@@ -58,10 +58,10 @@ def set_pp_coordinates():
 
     pp_coor = np.zeros((2,3))
 
-    delta_x_1 = 30
-    delta_y_1 = 15
-    delta_x_2 = 5
-    delta_y_2 = 18
+    delta_x_1 = 0
+    delta_y_1 = 16
+    delta_x_2 = 10
+    delta_y_2 = 22
     delta_x_3 = 12
     delta_y_3 = 15
 

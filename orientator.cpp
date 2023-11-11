@@ -61,7 +61,7 @@ typedef struct payload_t {
 #define MAX_Y -0.20
 #define MAX_Z 0.80
 
-# define MAX_ROB_SPEED 6.0
+# define MAX_ROB_SPEED 4.0
 
 #define BASE_A -90*M_PI/180
 #define BASE_B 90*M_PI/180

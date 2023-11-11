@@ -50,7 +50,7 @@ def start_streaming(cam_info, mode, undistortion, ip_processor):
         if cam_info.type == "Inivation":
             cmd_und = f"resolution {cam_info.res_x} {cam_info.res_y} undistortion {cam_info.type}/cam{cam_info.id}.csv"
         else:
-            cmd_und = f""
+            cmd_und = f"resolution {cam_info.res_x} {cam_info.res_y} undistortion {cam_info.type}/cam{cam_info.id}.csv"
         u_message = "WITH undistortion"
     else:
         cmd_und = ""
