@@ -61,11 +61,14 @@ typedef struct payload_t {
 #define MAX_Y -0.20
 #define MAX_Z 0.80
 
-# define MAX_ROB_SPEED 4.0
+# define MAX_ROB_SPEED 2.0
 
-#define BASE_A -90*M_PI/180
-#define BASE_B 90*M_PI/180
-#define BASE_G -120*M_PI/180 // rotate around z (right-hand rule)
+#define BASE_HAND_A -90*M_PI/180
+#define BASE_HAND_B 90*M_PI/180
+#define BASE_HAND_G -120*M_PI/180 // rotate around z (right-hand rule)
+#define BASE_HAMMER_A -130*M_PI/180
+#define BASE_HAMMER_B -15*M_PI/180
+#define BASE_HAMMER_G 100*M_PI/180
 #define MAX_D_ANG 90*M_PI/180
 
 #pragma pack()
@@ -153,15 +156,15 @@ double check_angle_lim(double value, char angle) {
   double base = 0;
 
   if(angle == 'a') {
-    base = BASE_A;
+    base = BASE_HAND_A;
     // printf("alpha:\n");
   }
   if(angle == 'b') {
-    base = BASE_B;
+    base = BASE_HAND_B;
     // printf("beta:\n");
   }
   if(angle == 'g') {
-    base = BASE_G;
+    base = BASE_HAND_G;
     // printf("gamma:\n");
   }
 
@@ -215,11 +218,12 @@ void save_nextpose(double x, double y, double z, double a, double b, double g) {
     // delta_roll = 0*atan((OFFSET_X*2-nextpose.x)/OFFSET_Y);
     // delta_roll = atan2(abs(MIN_X-nextpose.x), abs(MIN_Y-nextpose.y))*0;
 
-    nextpose.a = check_angle_lim(BASE_A+delta_a, 'a'); // yaw --> alpha : around z (theory)
-    nextpose.b = check_angle_lim(BASE_B+delta_b, 'b'); // pitch --> beta : around y (theory) up-down (hand)
-    nextpose.g = check_angle_lim(BASE_G+delta_g, 'g'); // roll --> gamma : around x (theory) left-right (hand)
+    nextpose.a = a+(M_PI/2)+BASE_HAND_A+delta_a; // yaw --> alpha : around z (theory)
+    nextpose.b = b+BASE_HAND_B+delta_b; // pitch --> beta : around y (theory) up-down (hand)
+    nextpose.g = g+BASE_HAND_G+delta_g; // roll --> gamma : around x (theory) left-right (hand)
     mutex_nextpose.unlock();
   }
+
 
   printf("%.3f | %.3f | %.3f | %.3f | %.3f | %.3f\n", 
           nextpose.x, nextpose.y, nextpose.z, 
@@ -417,13 +421,6 @@ void init_panda_pva() {
     final_pose = robot_state.O_T_EE_c;
     final_joints = robot_state.q_d;
 
-    printf("Joint 1: %.3f\n", final_joints[0]);
-    printf("Joint 2: %.3f\n", final_joints[1]);
-    printf("Joint 3: %.3f\n", final_joints[2]);
-    printf("Joint 4: %.3f\n", final_joints[3]);
-    printf("Joint 5: %.3f\n", final_joints[4]);
-    printf("Joint 6: %.3f\n", final_joints[5]);
-    printf("Joint 7: %.3f\n", final_joints[6]);
 
     if (mutex_nextpose.try_lock()) {
       nextpose = get_ee_pose(final_pose);
@@ -515,7 +512,14 @@ void move_end_effector() {
       initial_state.O_T_EE[15] = 1;
 
 
-      initial_state.q_d[4] = 2.0;
+
+      // printf("Motion: %.3f | %.3f | %.3f | %.3f | %.3f | %.3f\n", 
+      //         c_target.x, c_target.y, c_target.z, 
+      //         c_target.a*180/M_PI, c_target.b*180/M_PI, c_target.g*180/M_PI);
+
+      
+
+      // initial_state.q_d[4] = 2.0;
 
 
       // Eigen::Quaterniond orientation_d = Eigen::AngleAxisd(c_target.a, Eigen::Vector3d::UnitX())
