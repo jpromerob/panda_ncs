@@ -64,6 +64,7 @@ def pos_server(merge_queue, cam_id, resolution):
         merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.a, payload_in.b, payload_in.g, payload_in.p])
         message = f"{int(payload_in.x*off_x+off_x)},{int(payload_in.y*off_y+off_y)}"
         vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
+        # print(f"{payload_in.x}|{payload_in.y}")
         
 
     ssock.close()
@@ -214,30 +215,24 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
 
 
         vertex_xyz = np.zeros(4)
-        vertex_xyz[0] = -0.050 # x: -0.050 for hammer and -0.050 for nail
+        vertex_xyz[0] = -0.200 # x: -0.050 for hammer and -0.050 for nail
         vertex_xyz[1] = -0.000 # y
-        vertex_xyz[2] =  0.135 # z
+        vertex_xyz[2] =  0.000 # z
         vertex_xyz[3] = 1 # just like that
-
-        vertex_abg = np.zeros(4)
-        vertex_abg[0] = (math.pi/180)*-0
-        vertex_abg[1] = (math.pi/180)*90
-        vertex_abg[2] = (math.pi/180)*-0
         
 
 
         centroid_r2w = get_rotmats(centroid_poses)
         centroid_trl = get_transmats(centroid_poses)
         centroid_c2w = centroid_trl[:,:,0].dot(centroid_r2w[:,:,0])
+
         vertex_xyz = centroid_c2w.dot(vertex_xyz)
+
 
         x = round(vertex_xyz[0],3)
         y = round(vertex_xyz[1],3)
         z = round(vertex_xyz[2],3)
-
-        theta = math.atan2(abs(vertex_xyz[0]-centroid_poses[0,0]),abs(vertex_xyz[2]-centroid_poses[0,2]))
-        phi = math.atan2(abs(vertex_xyz[1]-centroid_poses[0,1]),abs(vertex_xyz[2]-centroid_poses[0,2]))
-        eta = math.atan2(abs(vertex_xyz[1]-centroid_poses[0,1]),abs(vertex_xyz[0]-centroid_poses[0,0]))
+        # print(f"Vertex: {x}\t{y}\t{z}")
 
         stop = datetime.datetime.now()
         diff = stop - start
@@ -252,11 +247,11 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
             alpha_deg = round(alpha*180/math.pi,2)
             beta_deg =   round(beta*180/math.pi,2)
             gamma_deg = round(gamma*180/math.pi,2)
-            print(f"{x_short} | {y_short} | {z_short} | {alpha_deg} | {beta_deg} | {gamma_deg}")
+            # print(f"{x_short} | {y_short} | {z_short} | {alpha_deg} | {beta_deg} | {gamma_deg}")
             counter = 0
 
         
-        # print(f"{x} | {y} | {z}")
+        print(f"{x} | {y} | {z}")
         panda_socket.sendto(PayloadPanda(x, y, z, alpha, beta, gamma), panda_address)
 
    

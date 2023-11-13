@@ -26,6 +26,7 @@ target_link_libraries(ncs_common PUBLIC Franka::Franka Eigen3::Eigen3)
 
 set(NCSS
   orientator
+  vertnailer
   pose_reader
   aligner
 )

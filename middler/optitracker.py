@@ -90,6 +90,7 @@ def get_pixel_spaces_from_optitrack(args):
             abg_array[i] = round(values[i+3],3)
             q_array[i+1] = round(values[i+7],3)
 
+
         if trash_counter % 100 == 0:
             alpha_deg = round(abg_array[0],2)
             beta_deg =  round(abg_array[1],2)

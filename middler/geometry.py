@@ -1,7 +1,6 @@
 import numpy as np
 import math
 
-
 '''
 This function sets the camera poses based on manual readings from optitrack (using camera marker 'hat')
 '''
@@ -26,12 +25,12 @@ def set_cam_poses():
     cam_poses[1,5] = (math.pi/180)*(2.418) # cam2:gamma
 
     # Cam 3
-    cam_poses[2,0] = -0.714 # cam3:cx
+    cam_poses[2,0] = -0.715 # cam3:cx
     cam_poses[2,1] =  0.963 # cam3:cy
-    cam_poses[2,2] =  0.580 # cam3:cz
-    cam_poses[2,3] = (math.pi/180)*(164.416) # cam3:alpha
-    cam_poses[2,4] = (math.pi/180)*(-54.450) # cam3:beta
-    cam_poses[2,5] = (math.pi/180)*(129.468) # cam3:gamma
+    cam_poses[2,2] =  0.576 # cam3:cz
+    cam_poses[2,3] = (math.pi/180)*(165.282) # cam3:alpha
+    cam_poses[2,4] = (math.pi/180)*(-56.915) # cam3:beta
+    cam_poses[2,5] = (math.pi/180)*(129.928) # cam3:gamma
 
     return cam_poses
 
