@@ -51,20 +51,20 @@ typedef struct payload_t {
 #define ROBOT_IP "172.16.0.2"
 
 #define OFFSET_X 0.000
-#define OFFSET_Y 0.050
-#define OFFSET_Z -0.000
+#define OFFSET_Y 0.160
+#define OFFSET_Z 0.000
 
-#define MIN_X -0.10 // to protect screens
+#define MIN_X -0.20 // to protect screens
 #define MIN_Y -0.80 // to not hit left wall
-#define MIN_Z 0.20 // to not hit table
+#define MIN_Z 0.10 // to not hit table
 #define MAX_X 0.36 // to not go out from board (towards people)
-#define MAX_Y -0.30 // to not hit joint limits (towards robot)
+#define MAX_Y -0.40 // to not hit joint limits (towards robot)
 #define MAX_Z 0.80 // upper height limit
 
-# define MAX_ROB_SPEED 4.0
+# define MAX_ROB_SPEED 6.0
 
-#define BASE_A -180*M_PI/180
-#define BASE_B 0*M_PI/180
+#define BASE_A 180*M_PI/180
+#define BASE_B -10*M_PI/180
 #define BASE_G -90*M_PI/180 // rotate around z (right-hand rule)
 #define MAX_D_ANG 90*M_PI/180
 
@@ -206,9 +206,9 @@ void save_nextpose(double x, double y, double z, double a, double b, double g) {
   }
 
   if (mutex_nextpose.try_lock()) {
-    nextpose.x = check_xyz_lim( x + 0.40 + OFFSET_X, 'x'); 
-    nextpose.y = check_xyz_lim(-z + 0.36 + OFFSET_Y, 'y');
-    nextpose.z = check_xyz_lim( y + 0.00 + OFFSET_Z, 'z');
+    nextpose.x = check_xyz_lim( x + 0.385 + OFFSET_X, 'x'); 
+    nextpose.y = check_xyz_lim(-z + 0.385 + OFFSET_Y, 'y');
+    nextpose.z = check_xyz_lim( y + 0.0 + OFFSET_Z, 'z');
 
     // delta_roll = 0*atan((OFFSET_X*2-nextpose.x)/OFFSET_Y);
     // delta_roll = atan2(abs(MIN_X-nextpose.x), abs(MIN_Y-nextpose.y))*0;

@@ -200,7 +200,7 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
 
         # So far we have the pose of the 'centroid' of the object in world space
         # However, the robot needs to follow one of the vertices of the object
-        # The location of such vertex, w.r.t the centroid, is d_x, d_y, d_z)
+        # The location of such vertex, the 'tip', w.r.t the centroid, is d_x, d_y, d_z)
         # We want to obtain the vertex's  location w.r.t to the origin
         # So, we need to apply translation matrices ... 
 
@@ -214,11 +214,11 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
         centroid_poses[0,5] = gamma # gamma
 
 
-        vertex_xyz = np.zeros(4)
-        vertex_xyz[0] = -0.200 # x: -0.050 for hammer and -0.050 for nail
-        vertex_xyz[1] = -0.000 # y
-        vertex_xyz[2] =  0.000 # z
-        vertex_xyz[3] = 1 # just like that
+        tip_xyz = np.zeros(4)
+        tip_xyz[0] = pm[18] # x: -0.050 for hammer and -0.050 for nail
+        tip_xyz[1] = pm[19] # y
+        tip_xyz[2] = pm[20] # z
+        tip_xyz[3] = 1 # just like that
         
 
 
@@ -226,13 +226,12 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
         centroid_trl = get_transmats(centroid_poses)
         centroid_c2w = centroid_trl[:,:,0].dot(centroid_r2w[:,:,0])
 
-        vertex_xyz = centroid_c2w.dot(vertex_xyz)
+        tip_xyz = centroid_c2w.dot(tip_xyz)
 
 
-        x = round(vertex_xyz[0],3)
-        y = round(vertex_xyz[1],3)
-        z = round(vertex_xyz[2],3)
-        # print(f"Vertex: {x}\t{y}\t{z}")
+        x = round(tip_xyz[0],3)
+        y = round(tip_xyz[1],3)
+        z = round(tip_xyz[2],3)
 
         stop = datetime.datetime.now()
         diff = stop - start
@@ -292,18 +291,21 @@ def parse_params():
         pm[3] = parameters['Σ_x']
         pm[4] = parameters['Σ_y']
         pm[5] = parameters['Σ_z']
-        pm[6] = parameters['o_x_0']
-        pm[7] = parameters['o_y_0']
-        pm[8] = parameters['o_z_0']
-        pm[9] =  parameters['o_x_1']
-        pm[10] = parameters['o_y_1']
-        pm[11] = parameters['o_z_1']
-        pm[12] = parameters['o_x_2']
-        pm[13] = parameters['o_y_2']
-        pm[14] = parameters['o_z_2']
-        pm[15] = parameters['o_x_3']
-        pm[16] = parameters['o_y_3']
-        pm[17] = parameters['o_z_3']
+        pm[6] = parameters['o_x_0']  # offset along X when all cameras available
+        pm[7] = parameters['o_y_0']  # offset along Y when all cameras available
+        pm[8] = parameters['o_z_0']  # offset along Z when all cameras available
+        pm[9] =  parameters['o_x_1'] # offset along X when camera #1 is 'absent'
+        pm[10] = parameters['o_y_1'] # offset along Y when camera #1 is 'absent'
+        pm[11] = parameters['o_z_1'] # offset along Z when camera #1 is 'absent'
+        pm[12] = parameters['o_x_2'] # offset along X when camera #2 is 'absent'
+        pm[13] = parameters['o_y_2'] # offset along Y when camera #2 is 'absent'
+        pm[14] = parameters['o_z_2'] # offset along Z when camera #2 is 'absent'
+        pm[15] = parameters['o_x_3'] # offset along X when camera #3 is 'absent'
+        pm[16] = parameters['o_y_3'] # offset along Y when camera #3 is 'absent'
+        pm[17] = parameters['o_z_3'] # offset along Z when camera #3 is 'absent'
+        pm[18] = parameters['tip_x'] # tip of hammer (delta_x vs centroid)
+        pm[19] = parameters['tip_y'] # tip of hammer (delta_y vs centroid)
+        pm[20] = parameters['tip_z'] # tip of hammer (delta_z vs centroid)
         time.sleep(1)
 
 def update_gaussians(presence):
@@ -353,7 +355,7 @@ if __name__ == "__main__":
     
 
 
-    pm = multiprocessing.Array('d', [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0])
+    pm = multiprocessing.Array('d', np.zeros(21))
 
 
     pos_cam_1 = multiprocessing.Process(target=pos_server, args=(merge_queue,1,resolution,))
