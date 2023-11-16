@@ -86,39 +86,21 @@ def visualize_data(args):
     frame = layout
     marker = np.zeros((2*radius+1, 2*radius+1, 3), dtype=np.uint8)
 
-    xtra = 5
-    top_r_1 = (xtra,mgv)
-    bot_r_1 = (mgh-2*xtra, mgv+rxy[1])
-    top_r_2 = (xtra,mgv+mgi+rxy[1])
-    bot_r_2 = (mgh-2*xtra, mgv+mgi+2*rxy[1])
-    top_r_3 = (mgh+mgi+2*rxy[0]+2*xtra,mgv)
-    bot_r_3 = (mgh*2-2*xtra+mgi+2*rxy[0]+xtra, mgv+rxy[1])
+    xtra = 8
+    top_v = [(xtra,mgv+mgi+rxy[1]), (xtra,mgv), (mgh+mgi+2*rxy[0]+2*xtra,mgv)]
+    bot_v = [(mgh-2*xtra, mgv+mgi+2*rxy[1]), (mgh-2*xtra, mgv+rxy[1]), (mgh*2-2*xtra+mgi+2*rxy[0]+xtra, mgv+rxy[1])]
     
-
+    bar_color = [(255,255,0), (0,255,0), (0,255,255)]
 
     # ncs_logo = cv2.imread(f'ncs_logo_{rxy[0]}x{rxy[1]}.png') 
     red = (0, 0, 255) 
     orange = (0, 128, 255) 
     ring_th = 5
 
+
+    ratio_circle_vs_all = [0.0,0.0,0.0]
     mask_radius = 5
     mask = create_circle(mask_radius)
-    print(mask.shape)
-    # plt.imshow(mask, cmap='gray', interpolation='nearest')
-    # plt.show()
-
-
-    IP_PANDA = "172.16.222.48"
-    mrg_out_socket = []
-    mrg_address = []
-
-    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
-    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
-    mrg_out_socket.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
-
-    mrg_address.append((IP_PANDA, 3001))
-    mrg_address.append((IP_PANDA, 3002))
-    mrg_address.append((IP_PANDA, 3003))
 
 
     new_px_x = [int(args.res_x/2),int(args.res_x/2),int(args.res_x/2)]
@@ -126,6 +108,10 @@ def visualize_data(args):
 
     new_px_y = [int(args.res_y/2),int(args.res_y/2),int(args.res_y/2)]
     old_px_y = [int(args.res_y/2),int(args.res_y/2),int(args.res_y/2)]
+
+    # Offset for circle center on the image for each camera
+    off_x = [mgh, mgh, mgh+mgi+args.res_x]
+    off_y = [mgv + mgi + args.res_y, mgv, mgv]
 
     while(True):
         # Reshape the array to its original shape (640x480)
@@ -144,19 +130,16 @@ def visualize_data(args):
 
 
         for i in range(3):
+            latent_all[i] = latent_all[i] * (params[i]) # scaling the latent spaces (so they are visible)
             xy = [old_px_x[i], old_px_y[i]]
             if xy[0]>mask_radius and xy[1]>mask_radius and xy[0] < args.res_x-mask_radius and xy[1] < args.res_y-mask_radius:
                 masked_all[i][xy[0]-mask_radius:xy[0]+mask_radius+1,xy[1]-mask_radius:xy[1]+mask_radius+1] = mask
-                latent_all[i] = latent_all[i] * (params[i]) # scaling the latent spaces (so they are visible)
-                # latent_all[i] = (latent_all[i] > params[3]).astype(int) # thresholding latent spaces (to remove noise)
-                latent_all[i] = latent_all[i]*masked_all[i] # masking latent spaces (to focus around center)
+                masked_all[i] = latent_all[i]*masked_all[i] # masking latent spaces (to focus around center)
                 
-                new_xy = find_max_indices(latent_all[i])
+                new_xy = find_max_indices(masked_all[i])
                 if new_xy[0]>mask_radius and new_xy[1]>mask_radius and new_xy[0] < args.res_x-mask_radius and new_xy[1] < args.res_y-mask_radius:
                     px_x = (new_xy[0]-args.res_x/2)*2/args.res_x
                     px_y = -(new_xy[1]-args.res_y/2)*2/args.res_y
-                    data_cam = struct.pack('fffffff', px_x, px_y, 0, 0, 0, 0, 1)
-                    mrg_out_socket[i].sendto(data_cam, mrg_address[i])
                     old_px_x[i] =  new_xy[0]
                     old_px_y[i] =  new_xy[1]
 
@@ -168,6 +151,24 @@ def visualize_data(args):
 
         image = cv2.resize(frame.transpose(1,0,2), (math.ceil((rxy[0]*2+mgh*2+mgi)*args.scale),math.ceil((rxy[1]*2+mgv*2+mgi)*args.scale)), interpolation = cv2.INTER_AREA)
         
+
+        bar_height = [0,0,0]
+        for i in range(3):
+            cv2.rectangle(image, top_v[i], bot_v[i], (255,255,255), thickness=-1)
+            all_activity = np.sum(latent_all[i])
+            circle_activity = np.sum(masked_all[i])
+            if all_activity > 0:
+                ratio_circle_vs_all[i] = circle_activity/all_activity
+
+            cx = int(off_x[i] + old_px_x[i])
+            cy = int(off_y[i] + old_px_y[i])
+
+            cv2.circle(image, (cx, cy), int(mask_radius), (255,255,255), thickness=1)
+            bar_height[i] = int(rxy[1]*(ratio_circle_vs_all[i]))
+            cv2.rectangle(image, (top_v[i][0], bot_v[i][1]-bar_height[i]), bot_v[i], bar_color[i], thickness=-1)
+
+            text = f"Cam #{i+1}: {int(ratio_circle_vs_all[i]*100)}% "
+            cv2.putText(image, text, (20+i*100, int(mgv/2)), cv2.FONT_HERSHEY_SIMPLEX, 0.4,(255,255,255),1)
 
         cv2.imshow(window_name, image)
         cv2.waitKey(1)

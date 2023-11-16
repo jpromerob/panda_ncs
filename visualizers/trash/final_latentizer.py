@@ -1,5 +1,6 @@
 import aestream
 import time
+from ctypes import *
 import cv2
 import pdb
 import numpy as np
@@ -9,6 +10,56 @@ import csv
 import os
 import multiprocessing
 import socket
+import matplotlib.pyplot as plt
+import struct
+
+
+""" This class defines a C-like struct """
+class PayloadSleipner(Structure):
+    _fields_ = [("x", c_float),
+                ("y", c_float),
+                ("z", c_float),
+                ("a", c_float),
+                ("b", c_float),
+                ("g", c_float),
+                ("p", c_float)]
+
+class PayloadPanda(Structure):
+    _fields_ = [("x", c_float),
+                ("y", c_float),
+                ("z", c_float),
+                ("a", c_float),
+                ("b", c_float),
+                ("g", c_float)]
+
+def create_circle(radius):
+    # Create a 2D array filled with zeros
+    side_length = 2 * radius + 1
+    circle = np.zeros((side_length, side_length))
+
+    # Create a meshgrid of indices
+    x, y = np.indices((side_length, side_length))
+
+    # Calculate the center of the circle
+    center = (radius, radius)
+
+    # Set values in the circle to 1 (or any desired non-zero value)
+    mask = (x - center[0])**2 + (y - center[1])**2 <= (radius)**2
+    circle[mask] = 1
+
+    return circle
+
+def find_max_indices(arr):
+    # Sum over axis 0
+    sum_axis_0 = np.sum(arr, axis=0)
+    # Sum over axis 1
+    sum_axis_1 = np.sum(arr, axis=1)
+
+    # Get indices where the maximum value occurs for each one-dimensional array
+    indices_max_axis_y = np.argmax(sum_axis_0)
+    indices_max_axis_x = np.argmax(sum_axis_1)
+
+    return [indices_max_axis_x, indices_max_axis_y]
 
 def visualize_data(args):
 
@@ -55,81 +106,84 @@ def visualize_data(args):
     frame = layout
     marker = np.zeros((2*radius+1, 2*radius+1, 3), dtype=np.uint8)
 
-    xtra = 5
-    top_r_1 = (xtra,mgv)
-    bot_r_1 = (mgh-2*xtra, mgv+rxy[1])
-    top_r_2 = (xtra,mgv+mgi+rxy[1])
-    bot_r_2 = (mgh-2*xtra, mgv+mgi+2*rxy[1])
-    top_r_3 = (mgh+mgi+2*rxy[0]+2*xtra,mgv)
-    bot_r_3 = (mgh*2-2*xtra+mgi+2*rxy[0]+xtra, mgv+rxy[1])
+    xtra = 8
+    top_v = [(xtra,mgv+mgi+rxy[1]), (xtra,mgv), (mgh+mgi+2*rxy[0]+2*xtra,mgv)]
+    bot_v = [(mgh-2*xtra, mgv+mgi+2*rxy[1]), (mgh-2*xtra, mgv+rxy[1]), (mgh*2-2*xtra+mgi+2*rxy[0]+xtra, mgv+rxy[1])]
     
-
+    bar_color = [(255,255,0), (0,255,0), (0,255,255)]
 
     # ncs_logo = cv2.imread(f'ncs_logo_{rxy[0]}x{rxy[1]}.png') 
     red = (0, 0, 255) 
     orange = (0, 128, 255) 
     ring_th = 5
 
+    # mask_radius = 5
+    # mask = create_circle(mask_radius)
+
+
+    new_px_x = [int(args.res_x/2),int(args.res_x/2),int(args.res_x/2)]
+    new_px_y = [int(args.res_y/2),int(args.res_y/2),int(args.res_y/2)]
+
+    # Offset for circle center on the image for each camera
+    off_x = [mgh, mgh, mgh+mgi+args.res_x]
+    off_y = [mgv + mgi + args.res_y, mgv, mgv]
+
     while(True):
         # Reshape the array to its original shape (640x480)
 
-        array_1 = np.frombuffer(cam_array_1.get_obj(), dtype=np.float64).reshape((args.res_x, args.res_y))
-        array_2 = np.frombuffer(cam_array_2.get_obj(), dtype=np.float64).reshape((args.res_x, args.res_y))
-        array_3 = np.frombuffer(cam_array_3.get_obj(), dtype=np.float64).reshape((args.res_x, args.res_y))
+        latent_all = []
+        # masked_all = []
+
+        # masked_all.append(np.zeros((args.res_x, args.res_y)))
+        # masked_all.append(np.zeros((args.res_x, args.res_y)))
+        # masked_all.append(np.zeros((args.res_x, args.res_y)))
+
+        latent_all.append(np.frombuffer(cam_array_1.get_obj(), dtype=np.float64).reshape((args.res_x, args.res_y)))
+        latent_all.append(np.frombuffer(cam_array_2.get_obj(), dtype=np.float64).reshape((args.res_x, args.res_y)))
+        latent_all.append(np.frombuffer(cam_array_3.get_obj(), dtype=np.float64).reshape((args.res_x, args.res_y)))
 
 
-        max1 = np.max(array_1)
-        max2 = np.max(array_2)
-        max3 = np.max(array_3)
 
-
-        m1 = params[0] #np.max(array_1)
-        m2 = params[1] #np.max(array_2)
-        m3 = params[2] #np.max(array_3)
-
-        # max_bar_height = 1000
-
-        # s1 = min(max_bar_height,np.sum(array_1)/1e-11)
-        # s2 = min(max_bar_height,np.sum(array_2)/1e-11)
-        # s3 = min(max_bar_height,np.sum(array_3)/1e-11)
-
-        # bar_1_height = max(1,int(rxy[1]*s1/max_bar_height))
-        # bar_2_height = max(1,int(rxy[1]*s2/max_bar_height))
-        # bar_3_height = max(1,int(rxy[1]*s3/max_bar_height))
-
-        if max1>0 and max2>0 and max3>0:
-            print(f"max 1 : {max1}")
-            print(f"\tmax 2 : {max2}")
-            print(f"\t\tmax 3 : {max3}")
-        #     print(f"Sum #1: {bar_1_height}")
-        #     print(f"\tSum #2: {bar_2_height}")
-        #     print(f"\t\tSum #3: {bar_3_height}")
-        
-        if m1 > 0:
-            array_1 = array_1 * (m1)
-        if m2 > 0:
-            array_2 = array_2 * (m2)
-        if m3 > 0:
-            array_3 = array_3 * (m3)
-
-
+        for i in range(3):
+            latent_all[i] = latent_all[i] * (params[i]) # scaling the latent spaces (so they are visible)
+        #     xy = [old_px_x[i], old_px_y[i]]
+        #     if xy[0]>mask_radius and xy[1]>mask_radius and xy[0] < args.res_x-mask_radius and xy[1] < args.res_y-mask_radius:
+        #         masked_all[i][xy[0]-mask_radius:xy[0]+mask_radius+1,xy[1]-mask_radius:xy[1]+mask_radius+1] = mask
+        #         masked_all[i] = latent_all[i]*masked_all[i] # masking latent spaces (to focus around center)
+                
+        #         new_xy = find_max_indices(masked_all[i])
+        #         if new_xy[0]>mask_radius and new_xy[1]>mask_radius and new_xy[0] < args.res_x-mask_radius and new_xy[1] < args.res_y-mask_radius:
+        #             px_x = (new_xy[0]-args.res_x/2)*2/args.res_x
+        #             px_y = -(new_xy[1]-args.res_y/2)*2/args.res_y
+        #             old_px_x[i] =  new_xy[0]
+        #             old_px_y[i] =  new_xy[1]
 
                 
 
-        frame[mgh+0:mgh+rxy[0],mgv+mgi+rxy[1]:mgv+mgi+rxy[1]*2,0:2] = 255*array_1[:,:,np.newaxis] # cyan
-        frame[mgh+0:mgh+rxy[0],mgv+0:mgv+rxy[1],1] =  255*array_2 # green
-        frame[mgh+mgi+rxy[0]:mgh+mgi+rxy[0]*2,mgv+0:mgv+rxy[1],1:3] = 255*array_3[:,:,np.newaxis] # yellow
+        frame[mgh+0:mgh+rxy[0],mgv+mgi+rxy[1]:mgv+mgi+rxy[1]*2,0:2] = 255*latent_all[0][:,:,np.newaxis] # cyan
+        frame[mgh+0:mgh+rxy[0],mgv+0:mgv+rxy[1],1] =  255*latent_all[1] # green
+        frame[mgh+mgi+rxy[0]:mgh+mgi+rxy[0]*2,mgv+0:mgv+rxy[1],1:3] = 255*latent_all[2][:,:,np.newaxis] # yellow
 
         image = cv2.resize(frame.transpose(1,0,2), (math.ceil((rxy[0]*2+mgh*2+mgi)*args.scale),math.ceil((rxy[1]*2+mgv*2+mgi)*args.scale)), interpolation = cv2.INTER_AREA)
         
-        # cv2.rectangle(image, top_r_1, bot_r_1, (255,255,255), thickness=-1)
-        # cv2.rectangle(image, top_r_2, bot_r_2, (255,255,255), thickness=-1)
-        # cv2.rectangle(image, top_r_3, bot_r_3, (255,255,255), thickness=-1)
 
+        # bar_height = [0,0,0]
+        # for i in range(3):
+        #     cv2.rectangle(image, top_v[i], bot_v[i], (255,255,255), thickness=-1)
+        #     all_activity = np.sum(latent_all[i])
+        #     circle_activity = np.sum(masked_all[i])
+        #     if all_activity > 0:
+        #         ratio_circle_vs_all[i] = circle_activity/all_activity
 
-        # cv2.rectangle(image, (top_r_1[0], bot_r_1[1]+bar_1_height), bot_r_1, (0,255,0), thickness=-1)
-        # cv2.rectangle(image, (top_r_2[0], bot_r_2[1]+bar_2_height), bot_r_2, (255,255,0), thickness=-1)
-        # cv2.rectangle(image, (top_r_3[0], bot_r_3[1]+bar_3_height), bot_r_3, (0,255,255), thickness=-1)
+        #     cx = int(off_x[i] + old_px_x[i])
+        #     cy = int(off_y[i] + old_px_y[i])
+
+        #     cv2.circle(image, (cx, cy), int(mask_radius), (255,255,255), thickness=1)
+        #     bar_height[i] = int(rxy[1]*(ratio_circle_vs_all[i]))
+        #     cv2.rectangle(image, (top_v[i][0], bot_v[i][1]-bar_height[i]), bot_v[i], bar_color[i], thickness=-1)
+
+        #     text = f"Cam #{i+1}: {int(ratio_circle_vs_all[i]*100)}% "
+        #     cv2.putText(image, text, (20+i*100, int(mgv/2)), cv2.FONT_HERSHEY_SIMPLEX, 0.4,(255,255,255),1)
 
         cv2.imshow(window_name, image)
         cv2.waitKey(1)
@@ -140,6 +194,7 @@ def receive_tensor(args, cam_id):
     # Set up TCP server
     TCP_IP = "172.16.222.46"  # Replace with the server's IP address
     port = args.port + cam_id 
+
 
     while(True):
 
@@ -184,6 +239,35 @@ def receive_tensor(args, cam_id):
                 break
         time.sleep(1)
 
+def receive_pose(args, cam_id):
+
+
+    port_nb = 3000 + cam_id 
+
+    off_x = int(args.res_x/2)
+    off_y = int(args.res_y/2)
+
+
+    server_addr = ('172.16.222.46', port_nb)
+    ssock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    ssock.bind(server_addr)
+    print("Listening on port {:d}".format(port_nb))
+
+
+    vis_out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    print_counter = 0
+    while True:
+
+        data, addr = ssock.recvfrom(2048)
+
+        payload_in = PayloadSleipner.from_buffer_copy(data) 
+        # merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.a, payload_in.b, payload_in.g, payload_in.p])
+        message = f"{int(payload_in.x*off_x+off_x)},{int(payload_in.y*off_y+off_y)}"
+        vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
+     
+    ssock.close()
+
 def update_parameters():
 
     while(True):
@@ -204,12 +288,13 @@ def update_parameters():
 
 
 
-
-        if params[0] != data[0]:
-            print(f"New scale: {data[0]}")
-            params[0] = data[0]
-        params[1] = data[1]
-        params[2] = data[2]
+        for i in range(4):
+            if params[i] != data[i]:
+                if i<3:
+                    print(f"New scale Cam {i+1}: {data[i]}")
+                else:
+                    print(f"New Threshold: {data[i]}")
+                params[i] = data[i]
 
 
         time.sleep(1)
@@ -233,9 +318,15 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    params = multiprocessing.Array('d', [0.0,0.0,0.0])
-    
+    params = multiprocessing.Array('d', [0.0, 0.0, 0.0, 0.0])
 
+    poses = multiprocessing.Array('d', np.zeros(int(args.res_x*args.res_y), dtype=np.float64))
+
+    old_px_x = multiprocessing.Array('i', [int(args.res_x/2),int(args.res_x/2),int(args.res_x/2)])
+    old_px_y = multiprocessing.Array('i', [int(args.res_y/2),int(args.res_y/2),int(args.res_y/2)])
+
+    ratio_circle_vs_all = multiprocessing.Array('d', [0.0, 0.0, 0.0])
+   
     full_res = int(args.res_x*args.res_y)
 
     cam_array_1 = multiprocessing.Array('d', np.zeros(int(args.res_x*args.res_y), dtype=np.float64))
@@ -243,22 +334,25 @@ if __name__ == '__main__':
     cam_array_3 = multiprocessing.Array('d', np.zeros(int(args.res_x*args.res_y), dtype=np.float64))
    
     # # Create three parallel processes
-    p_receiver_1 = multiprocessing.Process(target=receive_tensor, args=(args, 1,))
-    p_receiver_2 = multiprocessing.Process(target=receive_tensor, args=(args, 2,))
-    p_receiver_3 = multiprocessing.Process(target=receive_tensor, args=(args, 3,))
+    p_tenseiver_1 = multiprocessing.Process(target=receive_tensor, args=(args, 1,))
+    p_tenseiver_2 = multiprocessing.Process(target=receive_tensor, args=(args, 2,))
+    p_tenseiver_3 = multiprocessing.Process(target=receive_tensor, args=(args, 3,))
+    p_poseiver_1 = multiprocessing.Process(target=receive_pose, args=(args, 1,))
+    p_poseiver_2 = multiprocessing.Process(target=receive_pose, args=(args, 2,))
+    p_poseiver_3 = multiprocessing.Process(target=receive_pose, args=(args, 3,))
     p_visualization = multiprocessing.Process(target=visualize_data, args=(args,))
     p_parametrizer = multiprocessing.Process(target=update_parameters)
 
     # Start the processes
     p_visualization.start()
-    p_receiver_1.start()
-    p_receiver_2.start()
-    p_receiver_3.start()
+    p_tenseiver_1.start()
+    p_tenseiver_2.start()
+    p_tenseiver_3.start()
     p_parametrizer.start()
 
     # Wait for the processes to finish (you may need to manually stop them)
     p_visualization.join()
-    p_receiver_1.join()
-    p_receiver_2.join()
-    p_receiver_3.join()
+    p_tenseiver_1.join()
+    p_tenseiver_2.join()
+    p_tenseiver_3.join()
     p_parametrizer.join()

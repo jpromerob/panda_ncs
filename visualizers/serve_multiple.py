@@ -16,6 +16,8 @@ import numpy as np
 import time
 import torch
 import ringbuffer
+import norse
+import loss
 import learn_shapes2 as learn_shapes
 
 logging.basicConfig(level=logging.DEBUG)
@@ -30,16 +32,17 @@ def send_tensors(sockets, tensors):
         tensor = tensors[i]
         s = sockets[i][0]
         address = sockets[i][1]
-        bytes = (
-            struct.pack("<f", tensor[0])
-            + struct.pack("<f", tensor[1])
-            + struct.pack("<f", tensor[2])
-            + struct.pack("<f", tensor[3])
-            + struct.pack("<f", tensor[4])
-            + struct.pack("<f", tensor[5])
-            + struct.pack("<f", tensor[6])
-        )
-        s.sendto(bytes, address)
+        if tensor[-1] >= 1:
+            bytes = (
+                struct.pack("<f", tensor[0])
+                + struct.pack("<f", tensor[1])
+                + struct.pack("<f", tensor[2])
+                + struct.pack("<f", tensor[3])
+                + struct.pack("<f", tensor[4])
+                + struct.pack("<f", tensor[5])
+                + struct.pack("<f", tensor[6])
+            )
+            s.sendto(bytes, address)
 
 
 def sender(host, ports, queue, buffer_size=10):
@@ -73,7 +76,6 @@ def sender(host, ports, queue, buffer_size=10):
         s.close()
 
 def frame_sender(host, ports, queue):
-
     sockets = []
     for port in ports:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -84,9 +86,14 @@ def frame_sender(host, ports, queue):
     count = 0
     try:
         while True:
-            tensors = queue.get()
+            (tensors, prec) = queue.get()
+            tensors = tensors.astype(np.float64)
             for i, s in enumerate(sockets):
-                s.sendall(tensors[i].tobytes())
+                if tensors[i].sum() > 0:
+                    bs = tensors[i].tobytes()
+                    len1 = len(bs)
+                    bs = bs + prec[i].astype(np.float64).tobytes()
+                    s.sendall(bs)
             count += 1
             if time.time() >= t + 1:
                 logging.debug(f"Sending {count} frames/s\n")
@@ -99,10 +106,42 @@ def frame_sender(host, ports, queue):
         for s in sockets:
             s.close()
 
-def get_prediction(camera, model, state):
+def gaussian_mask(resolution, x, y):
+    size = 20
+    domain = 3
+    a = torch.linspace(-domain, domain, size, device="cuda:0")
+    xs, ys = torch.meshgrid(a, a, indexing="xy")
+    coo = torch.stack([xs, ys], dim=2)
+    field = norse.torch.functional.receptive_field.gaussian_kernel(coo, torch.eye(2).T.to("cuda:0"))
+    frame = torch.zeros(resolution, device="cuda:0")
+    x1 = int(x - size // 2)
+    x2 = int(x + size // 2)
+    y1 = int(y - size // 2)
+    y2 = int(y + size // 2)
+    xc1 = max(x1, domain // 2)
+    xc2 = min(x2, resolution[0] - domain // 2)
+    yc1 = max(y1, domain // 2)
+    yc2 = min(y2, resolution[1] - domain // 2)
+    frame[xc1:xc2, yc1:yc2] = field[:xc2 - xc1, :yc2 - yc1]
+    return frame
+
+
+def normalized_to_image(resolution, coordinate):
+    return (coordinate + 1) * resolution * 0.5
+
+def get_prediction(camera, model, state, mask_model, mask_state, dsnt, prev_coo):
     frame = camera.read().to("cuda:0").view(1, 1, 1, CAMERA_SHAPE[0], CAMERA_SHAPE[1])
     out, pose, _, state = model.predict(frame, state)
-    return out.cpu(), pose.cpu() * torch.tensor([1, -1]), state
+    out = out.squeeze()
+    coo_pixel = normalized_to_image(dsnt.resolution.cpu(), prev_coo)
+    gauss_mask = gaussian_mask(out.shape, *coo_pixel)
+    gauss_mask = gauss_mask / gauss_mask.max()
+    out_masked = gauss_mask * out
+    gauss_integrated, mask_state = mask_model((gauss_mask + 0.001) * out, mask_state)
+    precision = out_masked.sum()
+    print(precision, out_masked.sum(), out.sum(), coo_pixel)
+    pose, _ = dsnt(gauss_integrated / gauss_integrated.sum())
+    return out.cpu().numpy(), pose.squeeze().cpu() * torch.tensor([1, -1]), precision, state, mask_state
 
 def predictor(
     host,
@@ -134,6 +173,12 @@ def predictor(
             ).start_stream()
             for port in ports_in
         ]
+        masks = [norse.torch.LIBoxCell(p=norse.torch.LIBoxParameters(tau_mem_inv=torch.tensor(150, device="cuda:0"))) for _ in ports_in]
+        masks_state = [None] * len(ports_in)
+        dsnt = loss.DSNT(torch.tensor([119, 72], device="cuda:0"))
+
+        mask_index = 0
+        prev_coo = torch.zeros(3, 2)
 
         with torch.inference_mode():
             ports = ",".join([str(p) for p in ports_in])
@@ -144,28 +189,36 @@ def predictor(
                     t_0 = t_1
                     coordinates = []
                     activities = []
+                    precisions = []
                     out = None
                     for i in range(len(models)):
-                        out, coo, state[i] = get_prediction(streams[i], models[i], state[i])
+                        if i == mask_index % 3:
+                            out, coo, prec, state[i], masks_state[i] = get_prediction(streams[i], models[i], state[i], masks[i], masks_state[i], dsnt, prev_coo[i])
+                            precisions.append(prec)
+                        else:
+                            precisions.append(0)
+                            out = torch.zeros(119, 72)
+                            coo = torch.zeros(2)
                         coordinates.append(coo)
-                        activities.append(out.squeeze().numpy())
+                        activities.append(out)
                     activities = np.array(activities)
+                    precisions = torch.tensor(precisions).reshape(-1, 1).numpy()
                     
-                    coordinates = torch.stack(coordinates).squeeze()
+                    prev_coo = coordinates = torch.stack(coordinates).squeeze()
                     pose = torch.concat([coordinates, torch.zeros(len(models), 1)], dim=-1) # Add a zero z coordinate
                     pose = pose.numpy() # Cast to numpy
                     if not queue_out.full():
                         alpha = np.array([0,0,0]).reshape(-1, 1)
                         beta = np.array([0,0,0]).reshape(-1, 1)
                         gamma = np.array([0,0,0]).reshape(-1, 1)
-                        pres = np.array([1,1,1]).reshape(-1, 1)
-                        output = np.concatenate((pose, alpha, beta, gamma, pres), 1)
+                        output = np.concatenate((pose, alpha, beta, gamma, precisions), 1)
                         queue_out.put(output, block=False)
                     if not queue_frames.full():
-                        queue_frames.put(activities, block=False)
+                        queue_frames.put((activities, precisions), block=False)
 
                     c += 1
                     c_total += 1
+                    mask_index += 1
 
                 if time.time() >= t_l + 1:
                     print(f"Receiving {c}/s")
