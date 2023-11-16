@@ -56,6 +56,7 @@ def pos_server(merge_queue, cam_id, resolution):
 
     vis_out_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+    print_counter = 0
     while True:
 
         data, addr = ssock.recvfrom(2048)
@@ -64,7 +65,14 @@ def pos_server(merge_queue, cam_id, resolution):
         merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.a, payload_in.b, payload_in.g, payload_in.p])
         message = f"{int(payload_in.x*off_x+off_x)},{int(payload_in.y*off_y+off_y)}"
         vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
-        # print(f"{payload_in.x}|{payload_in.y}")
+
+
+        if print_counter < 20:
+            print_counter += 1
+        else:
+            print_counter = 0
+            if cam_id == 1:
+                print(f"cam {cam_id}: {payload_in.x}|{payload_in.y}")
         
 
     ssock.close()
@@ -250,7 +258,7 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
             counter = 0
 
         
-        print(f"{x} | {y} | {z}")
+        # print(f"{x} | {y} | {z}")
         panda_socket.sendto(PayloadPanda(x, y, z, alpha, beta, gamma), panda_address)
 
    

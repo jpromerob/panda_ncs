@@ -56,6 +56,7 @@ def start_streaming(cam_info, mode, undistortion, ip_processor):
         cmd_und = ""
         u_message = "withOUT undistortion"
     cmd_full = f"/opt/aestream/build/src/aestream {cmd_in} {cmd_out} {cmd_und}"
+    print(cmd_full)
 
 
     time.sleep(5*cam_info.id)
@@ -128,6 +129,8 @@ def visualize_data(args):
 
                     image = cv2.resize(frame.transpose(1,0,2), (math.ceil((rxy[0]*2+mgh*2+mgi)*args.scale),math.ceil((rxy[1]*2+mgv*2+mgi)*args.scale)), interpolation = cv2.INTER_AREA)
                     
+                
+
                     cx = int((mgh+xy_array[0])*args.scale)
                     cy = int((mgv+rxy[1]+mgi+xy_array[1])*args.scale)
                     cv2.circle(image, (cx, cy), int(radius*args.scale), red, thickness=ring_th)
