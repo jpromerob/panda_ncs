@@ -50,27 +50,25 @@ typedef struct payload_t {
 
 #define ROBOT_IP "172.16.0.2"
 
-#define OFFSET_X 0.000
-#define OFFSET_Y 0.160
+#define OFFSET_X 0.040
+#define OFFSET_Y 0.200
 #define OFFSET_Z 0.000
 
-#define MIN_X -0.20 // to protect screens
+#define MIN_X -0.10 // to protect screens
 #define MIN_Y -0.80 // to not hit left wall
-#define MIN_Z 0.10 // to not hit table
+#define MIN_Z 0.20 // to not hit table
 #define MAX_X 0.36 // to not go out from board (towards people)
 #define MAX_Y -0.40 // to not hit joint limits (towards robot)
 #define MAX_Z 0.80 // upper height limit
 
-# define MAX_ROB_SPEED 6.0
+# define MAX_ROB_SPEED 4.0
 
-#define BASE_A 180*M_PI/180
+#define BASE_A 150*M_PI/180
 #define BASE_B -10*M_PI/180
 #define BASE_G -90*M_PI/180 // rotate around z (right-hand rule)
 #define MAX_D_ANG 90*M_PI/180
 
 #pragma pack()
-
-
 
 
 typedef struct pose
@@ -195,8 +193,8 @@ void save_nextpose(double x, double y, double z, double a, double b, double g) {
   double delta_g = 0; 
 
 
-  printf("%.3f | %.3f | %.3f | %.3f | %.3f | %.3f\n", 
-          x, y, z, a*180/M_PI, b*180/M_PI, g*180/M_PI);
+  // printf("%.3f | %.3f | %.3f | %.3f | %.3f | %.3f\n", 
+  //         x, y, z, a*180/M_PI, b*180/M_PI, g*180/M_PI);
 
   if (mutex_rt_aid.try_lock()) {
     delta_a = rt_aid.a;

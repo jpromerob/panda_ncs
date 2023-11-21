@@ -62,17 +62,27 @@ def pos_server(merge_queue, cam_id, resolution):
         data, addr = ssock.recvfrom(2048)
 
         payload_in = PayloadSleipner.from_buffer_copy(data) 
-        merge_queue.put([cam_id, payload_in.x, payload_in.y, payload_in.z, payload_in.a, payload_in.b, payload_in.g, payload_in.p])
+        x = payload_in.x
+        y = payload_in.y
+        z = payload_in.z
+        a = payload_in.a
+        b = payload_in.b
+        g = payload_in.g
+        if cam_id == 3: # @TODO: remove this!
+            p = 0
+        else:
+            p = 1
+        merge_queue.put([cam_id, x, y, z, a, b, g, p])
         message = f"{int(payload_in.x*off_x+off_x)},{int(payload_in.y*off_y+off_y)}"
         vis_out_sock.sendto(message.encode(), (IP_NUC, 4330+cam_id))
 
 
-        if print_counter < 20:
-            print_counter += 1
-        else:
-            print_counter = 0
-            if cam_id == 1:
-                print(f"cam {cam_id}: {payload_in.x}|{payload_in.y}")
+        # if print_counter < 20:
+        #     print_counter += 1
+        # else:
+        #     print_counter = 0
+        #     if cam_id == 1:
+        #         print(f"cam {cam_id}: {payload_in.x}|{payload_in.y}")
         
 
     ssock.close()
@@ -148,7 +158,13 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
         while not merge_queue.empty():
             datum = merge_queue.get()
             cam_id = datum[0]
-            presence[cam_id-1] = datum[-1]
+
+            if datum[-1] > 0.3:
+                presence[cam_id-1] = 1
+            else:
+                presence[cam_id-1] = 0
+            
+
             if oldsence[cam_id-1] != presence[cam_id-1]:
                 oldsence[cam_id-1] = presence[cam_id-1]
             
@@ -181,7 +197,7 @@ def combiner(merge_queue, ip_address, port_nb, resolution):
         start = datetime.datetime.now()
 
         # Estimate virtual camera poses (in real camera space)
-        v_poses = set_vir_poses(r_obj_angles, v_poses, presence)
+        v_poses = set_vir_poses(r_obj_angles, v_poses)
         
         # Get Rotation Matrices: virtual-cam to real-cam 
         v2r = get_rotmats(v_poses)

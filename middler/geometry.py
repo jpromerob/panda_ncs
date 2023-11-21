@@ -75,17 +75,15 @@ def set_pp_coordinates():
 '''
 Poses of virtual cameras with respect to their corresponding real camera space
 '''
-def set_vir_poses(angles, v_poses, presence):
+def set_vir_poses(angles, v_poses):
    
     for k in range(3): # for cameras 1|2|3
-        # Cam k+1
-        if presence[k]==1:
-            v_poses[k,0] = 0
-            v_poses[k,1] = 0
-            v_poses[k,2] = 0
-            v_poses[k,3] = (math.pi/180)*(angles[1,k])    # around X axis -->  ang(YZ)
-            v_poses[k,4] = (math.pi/180)*(-angles[0,k])   # around Y axis --> -ang(XZ)
-            v_poses[k,5] = 0 
+        v_poses[k,0] = 0
+        v_poses[k,1] = 0
+        v_poses[k,2] = 0
+        v_poses[k,3] = (math.pi/180)*(angles[1,k])    # around X axis -->  ang(YZ)
+        v_poses[k,4] = (math.pi/180)*(-angles[0,k])   # around Y axis --> -ang(XZ)
+        v_poses[k,5] = 0 
 
     return v_poses
     

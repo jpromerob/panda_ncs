@@ -110,7 +110,7 @@ def visualize_data(args):
     marker = np.zeros((2*radius+1, 2*radius+1, 3), dtype=np.uint8)
 
 
-    # ncs_logo = cv2.imread(f'ncs_logo_{rxy[0]}x{rxy[1]}.png') 
+    ncs_logo = cv2.imread(f'ncs_logo_{rxy[0]}x{rxy[1]}.png') 
 
     red = (0, 0, 255) 
     orange = (0, 128, 255) 
@@ -125,7 +125,7 @@ def visualize_data(args):
                     frame[mgh+0:mgh+rxy[0],mgv+0:mgv+rxy[1],1] =  255*stream2.read() # green
                     frame[mgh+mgi+rxy[0]:mgh+mgi+rxy[0]*2,mgv+0:mgv+rxy[1],1:3] = 255*stream3.read()[:,:,np.newaxis] # yellow
 
-                    # frame[mgh+mgi+rxy[0]:mgh+mgi+rxy[0]*2,mgv+mgi+rxy[1]:mgv+mgi+rxy[1]*2,:] = ncs_logo.transpose(1,0,2)
+                    frame[mgh+mgi+rxy[0]:mgh+mgi+rxy[0]*2,mgv+mgi+rxy[1]:mgv+mgi+rxy[1]*2,:] = ncs_logo.transpose(1,0,2)
 
                     image = cv2.resize(frame.transpose(1,0,2), (math.ceil((rxy[0]*2+mgh*2+mgi)*args.scale),math.ceil((rxy[1]*2+mgv*2+mgi)*args.scale)), interpolation = cv2.INTER_AREA)
                     
